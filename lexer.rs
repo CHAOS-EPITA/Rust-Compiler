@@ -19,6 +19,7 @@ enum Token {
     LParen, RParen, LBrace, RBrace, Comma, Semicolon, Colon, Arrow, // Délimiteurs
     Comment(String), // Commentaires
     Eof, // Fin du fichier
+    Error(String),
 }
 
 
@@ -33,8 +34,8 @@ impl Lexer{
 
     fn new(input: &str) -> Self{
         Self {
-            input: input.chars().collect();
-            pos: 0;
+            input: input.chars().collect(),
+            pos: 0,
         }
     }
 
@@ -58,7 +59,7 @@ impl Lexer{
     fn next_token(&mut self) -> Token{
         while let Some(c) = self.next_char(){
             return match c{
-                ' ' | '\t' | '\r' => continue,
+                ' ' | '\t' | '\n' | '\r' => continue,
                 '+' => Token::Plus,
                 '-' =>{
                     if self.peek_char() == Some('>'){
@@ -72,19 +73,20 @@ impl Lexer{
 
                 '*' => Token::Star,
                 '/' => {
-                    self.peek_char() == Some('/'){
+                    if self.peek_char() == Some('/'){
                         self.consume_comment()
                     } else{
-                        Token::Slash;
+                        Token::Slash
                     }
                 }
 
-                '(' => Token::Lparen,
+                '(' => Token::LParen,
                 ')' => Token::RParen,
                 '{' => Token::LBrace,
                 '}' => Token::RBrace,
                 ',' => Token::Comma,
                 ';' => Token::Semicolon,
+                ':' => Token::Colon,
                 '=' => {
                     if self.peek_char() == Some('='){
                         self.next_char();
@@ -99,13 +101,13 @@ impl Lexer{
                         self.next_char();
                         Token::Neq
                     }else {
-                        Token:Not
+                        Token::Not
                     }
                 }
 
                 '<' => {
                     if self.peek_char() == Some('='){
-                        self.peek_char();
+                        self.next_char();
                         Token::Le
                     }else {
                         Token::Lt
@@ -122,19 +124,93 @@ impl Lexer{
                 }
                 '"' => self.consume_string(),
                 '0'..='9' => self.consume_number(c),
-                'a'..='z' |'A'..='Z'| '_' => self.consume_iden(c),
-                _ => Token::Eof,
+                'a'..='z' |'A'..='Z'| '_' => self.consume_ident(c),
+                _ => Token::Error(format!("Caractère inattendu: '{}'", c)),
             };
 
         }
         Token::Eof
     }
 
-    fn consume_comment(&mut self) -> Token{}
-    fn consume_iden(&mut self, first: char) -> Token{}
-    fn main(){}
+    fn consume_comment(&mut self) -> Token {
+        let mut comment = String::from("//");
+        while let Some(c) = self.next_char(){
+            if c == '\n'{
+                break;
+            }
+            comment.push(c);
+        }
+        Token::Comment(comment)
+    }
+    fn consume_string(&mut self) -> Token{
+        let mut string_lit = String::new();
+        while let Some(c) = self.next_char(){
+            if c == '"'{
+                return Token::StringLit(string_lit);
+            }
+            string_lit.push(c);
+        }
+        Token::StringLit(string_lit)    
+    }
 
+    fn consume_number(&mut self, first: char) -> Token{
+        let mut num = first.to_string();
+        while let Some(c) = self.peek_char(){
+            if c.is_ascii_digit(){
+                num.push(self.next_char().unwrap());
+            }else {
+                break;
+            }
+
+        }
+        Token::Number(num.parse().unwrap())
+    }
+
+    fn consume_ident(&mut self, first: char) -> Token {
+        let mut ident = first.to_string();
+        while let Some(c) = self.peek_char(){
+            if c.is_alphanumeric() || c == '_'{
+                ident.push(self.next_char().unwrap());
+            }else{
+                break;
+            }
+        }    
+
+        let keyword = ["fn", "let", "if", "else","while","match"];
+        if keyword.contains(&ident.as_str()) {
+            Token::Keyword(ident)
+        }else{
+            Token::Ident(ident)
+        }
+    }
 }
+
+fn main(){
+    let source_code = r#"
+        fn add(a: i32, b: i32) -> i32{
+            let result: i32 = a + b;
+            return result;
+         }
+
+        fn sub(a: i32, b:i32) -> i32{
+            let result: i32 = a - b;
+            return result;
+         }
+    "#;
+
+     let mut lexer = Lexer::new(source_code);
+     let mut tokens = Vec::new();
+
+     loop{
+        let token = lexer.next_token();
+        if token == Token::Eof{
+            break;
+        }
+        tokens.push(token);
+     }
+     // Affiches les tokens dans le terminal
+     println!("{:?}",tokens);
+  }
 
 
 
