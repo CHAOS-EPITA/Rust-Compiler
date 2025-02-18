@@ -1,7 +1,6 @@
 use logos::Logos;
 
-
-#[derive(Logos, Debug, PartialEq)]
+#[derive(Logos, Debug, PartialEq, Clone)]
 pub enum Token {
     #[token("+")]
     Plus,
@@ -9,26 +8,26 @@ pub enum Token {
     #[token("-")]
     Minus,
 
-    #[regex("[0-9]+", |lex| lex.slice().parse())]
+    #[token("*")]
+    Star,
+
+    #[token("/")]
+    Slash,
+
+    #[regex(r"[0-9]+", |lex| lex.slice().parse().ok())]
     Number(i32),
 
-    #[token("EOF")]
-    EOF,
+    #[token("(")]
+    LParen,
+
+    #[token(")")]
+    RParen,
+
+    #[regex(r"[ \t\n\f]+", logos::skip)]
+    #[error]
+    Error,
 }
 
 pub fn tokenize(input: &str) -> Vec<Token> {
-    let mut lexer = Token::lexer(input);
-    let mut tokens = Vec::new();
-    while let Some(token) = lexer.next() {
-        tokens.push(token);
-    }
-    tokens
+    Token::lexer(input).collect()
 }
-
-/*
-
-    CECI EST UN LEXER DE TEST EN ATTENDANT QUE MARCUS FINISSE SON LEXER
-    (JE TE DOMINE D'AILLEURS)
-
-
-*/

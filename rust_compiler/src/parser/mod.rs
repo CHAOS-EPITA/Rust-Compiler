@@ -1,2 +1,3 @@
-pub mod ast.rs
-pub mod parser.rs
+pub mod ast;
+pub mod parser;
+pub mod lexer;
