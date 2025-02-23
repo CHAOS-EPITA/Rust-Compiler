@@ -1,4 +1,4 @@
-extern crate llvm_sys as sys;
+/*extern crate llvm_sys as sys;
 extern crate llvm;
 
 use llvm::prelude::*;
@@ -112,4 +112,124 @@ fn create_conditional_function(context: &llvm::Context, module: &llvm::Module) {
 
 fn main() {
     create_llvm_ir();
+}*/
+
+extern crate llvm_sys as sys;
+extern crate llvm;
+
+use llvm::prelude::*;
+use llvm::target_machine::RelocMode;
+use llvm::CodeGenOpt::Level;
+use llvm::TargetMachine;
+use llvm::execution_engine::ExecutionEngine;
+use llvm::orc::ThreadSafeModule;
+use llvm::passes::PassManagerBuilder;
+use llvm::analysis::AnalysisPassManager;
+use std::process::exit;
+
+enum ASTNode {
+    BinaryOp(Box<ASTNode>, String, Box<ASTNode>),
+    Number(i32),
+    Function(String, Vec<String>, Box<ASTNode>),
+}
+
+fn create_llvm_ir(ast: &ASTNode) {
+    llvm::initialize_native_target();
+    llvm::initialize_native_asmprinter();
+    llvm::initialize_native_asmparser();
+    llvm::initialize_native_disassembler();
+
+    let context = llvm::Context::new();
+
+    let module = llvm::Module::new("example_module", &context);
+
+    generate_llvm_ir(ast, &context, &module);
+
+    if llvm::verify_module(module, llvm::PassManager::new()).is_err() {
+        eprintln!("Module verification failed!");
+        exit(1);
+    }
+
+    module.print_to_stderr();
+
+    if let Err(e) = module.write_to_file("example_module.bc") {
+        eprintln!("Failed to write bitcode file: {}", e);
+    }
+}
+
+fn generate_llvm_ir(ast: &ASTNode, context: &llvm::Context, module: &llvm::Module) {
+    match ast {
+        ASTNode::Number(value) => {
+            let int_type = llvm::Type::int32_type(context);
+            let constant = llvm::ConstantInt::get(int_type, *value as u64, false);
+        }
+        ASTNode::BinaryOp(left, op, right) => {
+            let left_value = generate_llvm_ir_expr(left, context, module);
+            let right_value = generate_llvm_ir_expr(right, context, module);
+
+            let int_type = llvm::Type::int32_type(context);
+            let builder = llvm::IRBuilder::new(context);
+
+            let result = match op.as_str() {
+                "+" => builder.build_add(left_value, right_value, "tmp"),
+                "-" => builder.build_sub(left_value, right_value, "tmp"),
+                _ => panic!("Unsupported operation"),
+            };
+        }
+        ASTNode::Function(name, args, body) => {
+            let param_types = args.iter().map(|_| llvm::Type::int32_type(context)).collect::<Vec<_>>();
+            let fn_type = llvm::FunctionType::get(llvm::Type::int32_type(context), &param_types, false);
+            let fn_value = module.add_function(name, fn_type, Some(llvm::Linkage::External));
+
+            let entry = llvm::BasicBlock::append(context, fn_value, "entry");
+            let builder = llvm::IRBuilder::new(context);
+            builder.position_at_end(entry);
+
+            generate_llvm_ir(body, context, module);
+
+            builder.build_return(Some(&builder.build_add(
+                fn_value.get_nth_param(0).unwrap(),
+                fn_value.get_nth_param(1).unwrap(),
+                "result",
+            )));
+        }
+    }
+}
+
+fn generate_llvm_ir_expr(ast: &ASTNode, context: &llvm::Context, module: &llvm::Module) -> llvm::Value {
+    match ast {
+        ASTNode::Number(value) => {
+            let int_type = llvm::Type::int32_type(context);
+            llvm::ConstantInt::get(int_type, *value as u64, false)
+        }
+        ASTNode::BinaryOp(left, op, right) => {
+            let left_value = generate_llvm_ir_expr(left, context, module);
+            let right_value = generate_llvm_ir_expr(right, context, module);
+
+            let int_type = llvm::Type::int32_type(context);
+            let builder = llvm::IRBuilder::new(context);
+
+            match op.as_str() {
+                "+" => builder.build_add(left_value, right_value, "tmp"),
+                "-" => builder.build_sub(left_value, right_value, "tmp"),
+                _ => panic!("Unsupported operation"),
+            }
+        }
+        _ => panic!("Unsupported AST node in expression context"),
+    }
+}
+
+//Exemple utilisation AST avec une fonction simple
+fn main() {
+    let ast = ASTNode::Function(
+        "add".to_string(),
+        vec!["a".to_string(), "b".to_string()],
+        Box::new(ASTNode::BinaryOp(
+            Box::new(ASTNode::Number(1)),
+            "+".to_string(),
+            Box::new(ASTNode::Number(2)),
+        )),
+    );
+
+    create_llvm_ir(&ast);
 }
