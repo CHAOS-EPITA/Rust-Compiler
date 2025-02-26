@@ -1,0 +1,12 @@
+fn add(a: i32, b: i32) -> i32{
+        let mut result: i32 = a + b;
+            return result;
+         }
+
+            
+fn sub(a: i32, b:i32) -> i32{
+        let mut result: i32 = a - b;
+            return result;
+         }
+
+         

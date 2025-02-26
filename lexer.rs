@@ -186,17 +186,17 @@ impl Lexer{
 }
 
 fn main(){
-    let source_code = r#"
+    let source_code = r"
         fn add(a: i32, b: i32) -> i32{
-            let result: i32 = a + b;
+            let mut result: i32 = a + b;
             return result;
          }
 
         fn sub(a: i32, b:i32) -> i32{
-            let result: i32 = a - b;
+            let mut result: i32 = a - b;
             return result;
          }
-    "#;
+    ";
 
      let mut lexer = Lexer::new(source_code);
      let mut tokens = Vec::new();
@@ -209,9 +209,21 @@ fn main(){
         tokens.push(token);
      }
      // Affiches les tokens dans le terminal
+     //.println!("{:?}",source_code);
      println!("{:?}",tokens);
   }
 
 
+/*
+  [Keyword("fn"), Ident("add"), LParen, Ident("a"), Colon, Ident("i32"), Comma, Ident("b"),
+   Colon, Ident("i32"), RParen, Arrow, Ident("i32"), LBrace, Keyword("let"), Ident("mut"),
+   Ident("result"), Colon, Ident("i32"), Eq, Ident("a"), Plus, Ident("b"), Semicolon,
+   Ident("return"),Ident("result"), Semicolon, RBrace, Keyword("fn"), Ident("sub"),
+   LParen, Ident("a"), Colon, Ident("i32"),Comma, Ident("b"), Colon, Ident("i32"),
+   RParen, Arrow, Ident("i32"), LBrace, Keyword("let"), Ident("mut"),Ident("result"),
+   Colon, Ident("i32"), Eq, Ident("a"), Minus, Ident("b"), Semicolon, Ident("return"),
+   Ident("result"), Semicolon, RBrace]
 
 
+
+*/
