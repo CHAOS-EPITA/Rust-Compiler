@@ -1,0 +1,8 @@
+digraph AST {
+    node [shape=box];
+    node0 [label="Mul"];
+    node1 [label="Number(2)"];
+    node0 -> node1;
+    node2 [label="Number(3)"];
+    node0 -> node2;
+}
