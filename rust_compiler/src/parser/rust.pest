@@ -1,0 +1,74 @@
+// Définition de la grammaire pour notre sous-ensemble de Rust
+
+// Règles de base
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT = _{ line_comment | block_comment }
+line_comment = _{ "//" ~ (!"\n" ~ ANY)* ~ ("\n" | EOI) }
+block_comment = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+// Identificateurs et littéraux
+ident = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+int_lit = @{ ASCII_DIGIT+ }
+float_lit = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+string_lit = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+bool_lit = { "true" | "false" }
+
+// Types
+type = { "i32" | "f64" | "bool" | "str" }
+
+// Expressions
+expr = { assign_expr | logical_or_expr }
+assign_expr = { ident ~ "=" ~ expr }
+logical_or_expr = { logical_and_expr ~ ("||" ~ logical_and_expr)* }
+logical_and_expr = { comparison_expr ~ ("&&" ~ comparison_expr)* }
+comparison_expr = { additive_expr ~ (comparison_op ~ additive_expr)? }
+comparison_op = { "==" | "!=" | "<" | "<=" | ">" | ">=" }
+additive_expr = { multiplicative_expr ~ (("+"|"-") ~ multiplicative_expr)* }
+multiplicative_expr = { unary_expr ~ (("*"|"/"|"%") ~ unary_expr)* }
+unary_expr = { ("+" | "-" | "!") ~ unary_expr | primary_expr }
+primary_expr = { 
+    int_lit | 
+    float_lit | 
+    string_lit | 
+    bool_lit | 
+    ident | 
+    function_call |
+    "(" ~ expr ~ ")" 
+}
+
+// Appel de fonction
+function_call = { ident ~ "(" ~ (expr ~ ("," ~ expr)*)? ~ ")" }
+
+// Déclarations
+declaration = { let_decl | fn_decl }
+
+// Déclaration de variable
+let_decl = { "let" ~ "mut"? ~ ident ~ (":" ~ type)? ~ "=" ~ expr ~ ";" }
+
+// Déclaration de fonction
+fn_decl = { 
+    "fn" ~ ident ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type)? ~ block 
+}
+param_list = { param ~ ("," ~ param)* }
+param = { ident ~ ":" ~ type }
+
+// Structures de contrôle
+if_stmt = { "if" ~ expr ~ block ~ ("else" ~ (if_stmt | block))? }
+while_stmt = { "while" ~ expr ~ block }
+for_stmt = { "for" ~ ident ~ "in" ~ expr ~ block }
+return_stmt = { "return" ~ expr? ~ ";" }
+
+// Bloc et instructions
+block = { "{" ~ stmt* ~ "}" }
+stmt = { 
+    expr ~ ";" | 
+    declaration | 
+    if_stmt | 
+    while_stmt | 
+    for_stmt | 
+    return_stmt | 
+    block 
+}
+
+// Programme complet
+program = { SOI ~ declaration* ~ EOI }

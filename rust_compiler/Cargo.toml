@@ -4,3 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+logos = "0.13.0"          # Pour le lexer
+pest = "2.7.5"            # Pour le parser
+pest_derive = "2.7.5"     # Macros pour pest
+clap = { version = "4.4.12", features = ["derive"] }  # Pour gérer les arguments en ligne de commande
+miette = { version = "5.10.0", features = ["fancy"] }  # Pour la gestion d'erreurs
+thiserror = "1.0.52"      # Pour la définition d'erreurs personnalisées
+tempfile = "3.8.1"        # Pour les fichiers temporaires (utile pour les tests, ou la génération de code intermédiaire)
+
+[build-dependencies]
+# Si vous choisissez d'utiliser lalrpop à la place de pest, décommentez la ligne suivante
+# lalrpop = "0.20.0"
