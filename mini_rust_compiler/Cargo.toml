@@ -1,0 +1,7 @@
+[package]
+name = "mini_rust_compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tempfile = "3.3.0"  # Pour créer des fichiers temporaires
