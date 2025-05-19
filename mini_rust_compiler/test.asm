@@ -8,6 +8,7 @@ section .data
     fmt_main_5 db "%d - %d = %d", 10, 0
     fmt_main_6 db "%d / %d = %d (division entière)", 10, 0
     fmt_main_7 db "%d * %d = %d", 10, 0
+    fmt_main_10 db "%d + %d = %d", 10, 0
 
 section .text
     extern printf
@@ -110,7 +111,7 @@ mult:
 main:
     push rbp
     mov rbp, rsp
-    sub rsp, 16
+    sub rsp, 32
 
     ; Variable declaration: x
     mov rax, 10
@@ -122,17 +123,17 @@ main:
 
     ; println!("x = {}, y = {}", ...)
 
-    ; Évaluation de l'argument 1
-    mov rax, QWORD [rbp-8]  ; Load variable x
-    push rax  ; Sauvegarde de l'argument sur la pile
-
-    ; Évaluation de l'argument 2
+    ; Évaluation d'un argument
     mov rax, QWORD [rbp-16]  ; Load variable y
     push rax  ; Sauvegarde de l'argument sur la pile
 
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-8]  ; Load variable x
+    push rax  ; Sauvegarde de l'argument sur la pile
+
     ; Configuration des registres pour printf
-    pop r8  ; Récupération de l'argument 2
-    pop r9  ; Récupération de l'argument 1
+    pop rsi  ; Argument 1
+    pop rdx  ; Argument 2
     lea rdi, [rel fmt_main_2]  ; Format string
     xor eax, eax  ; Pas de flottants
     call printf
@@ -146,15 +147,7 @@ main:
 
     ; println!("{} + {} = {}", ...)
 
-    ; Évaluation de l'argument 1
-    mov rax, QWORD [rbp-8]  ; Load variable x
-    push rax  ; Sauvegarde de l'argument sur la pile
-
-    ; Évaluation de l'argument 2
-    mov rax, QWORD [rbp-16]  ; Load variable y
-    push rax  ; Sauvegarde de l'argument sur la pile
-
-    ; Évaluation de l'argument 3
+    ; Évaluation d'un argument
 
     ; Appel de fonction: sum()
     ; Sauvegarde des registres volatiles
@@ -174,25 +167,25 @@ main:
     pop rcx
     push rax  ; Sauvegarde de l'argument sur la pile
 
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-16]  ; Load variable y
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-8]  ; Load variable x
+    push rax  ; Sauvegarde de l'argument sur la pile
+
     ; Configuration des registres pour printf
-    pop rcx  ; Récupération de l'argument 3
-    pop r8  ; Récupération de l'argument 2
-    pop r9  ; Récupération de l'argument 1
+    pop rsi  ; Argument 1
+    pop rdx  ; Argument 2
+    pop rcx  ; Argument 3
     lea rdi, [rel fmt_main_4]  ; Format string
     xor eax, eax  ; Pas de flottants
     call printf
 
     ; println!("{} - {} = {}", ...)
 
-    ; Évaluation de l'argument 1
-    mov rax, QWORD [rbp-8]  ; Load variable x
-    push rax  ; Sauvegarde de l'argument sur la pile
-
-    ; Évaluation de l'argument 2
-    mov rax, QWORD [rbp-16]  ; Load variable y
-    push rax  ; Sauvegarde de l'argument sur la pile
-
-    ; Évaluation de l'argument 3
+    ; Évaluation d'un argument
 
     ; Appel de fonction: diff()
     ; Sauvegarde des registres volatiles
@@ -212,25 +205,25 @@ main:
     pop rcx
     push rax  ; Sauvegarde de l'argument sur la pile
 
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-16]  ; Load variable y
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-8]  ; Load variable x
+    push rax  ; Sauvegarde de l'argument sur la pile
+
     ; Configuration des registres pour printf
-    pop rcx  ; Récupération de l'argument 3
-    pop r8  ; Récupération de l'argument 2
-    pop r9  ; Récupération de l'argument 1
+    pop rsi  ; Argument 1
+    pop rdx  ; Argument 2
+    pop rcx  ; Argument 3
     lea rdi, [rel fmt_main_5]  ; Format string
     xor eax, eax  ; Pas de flottants
     call printf
 
     ; println!("{} / {} = {} (division entière)", ...)
 
-    ; Évaluation de l'argument 1
-    mov rax, QWORD [rbp-8]  ; Load variable x
-    push rax  ; Sauvegarde de l'argument sur la pile
-
-    ; Évaluation de l'argument 2
-    mov rax, QWORD [rbp-16]  ; Load variable y
-    push rax  ; Sauvegarde de l'argument sur la pile
-
-    ; Évaluation de l'argument 3
+    ; Évaluation d'un argument
 
     ; Appel de fonction: divide()
     ; Sauvegarde des registres volatiles
@@ -250,25 +243,25 @@ main:
     pop rcx
     push rax  ; Sauvegarde de l'argument sur la pile
 
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-16]  ; Load variable y
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-8]  ; Load variable x
+    push rax  ; Sauvegarde de l'argument sur la pile
+
     ; Configuration des registres pour printf
-    pop rcx  ; Récupération de l'argument 3
-    pop r8  ; Récupération de l'argument 2
-    pop r9  ; Récupération de l'argument 1
+    pop rsi  ; Argument 1
+    pop rdx  ; Argument 2
+    pop rcx  ; Argument 3
     lea rdi, [rel fmt_main_6]  ; Format string
     xor eax, eax  ; Pas de flottants
     call printf
 
     ; println!("{} * {} = {}", ...)
 
-    ; Évaluation de l'argument 1
-    mov rax, QWORD [rbp-8]  ; Load variable x
-    push rax  ; Sauvegarde de l'argument sur la pile
-
-    ; Évaluation de l'argument 2
-    mov rax, QWORD [rbp-16]  ; Load variable y
-    push rax  ; Sauvegarde de l'argument sur la pile
-
-    ; Évaluation de l'argument 3
+    ; Évaluation d'un argument
 
     ; Appel de fonction: mult()
     ; Sauvegarde des registres volatiles
@@ -288,11 +281,65 @@ main:
     pop rcx
     push rax  ; Sauvegarde de l'argument sur la pile
 
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-16]  ; Load variable y
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-8]  ; Load variable x
+    push rax  ; Sauvegarde de l'argument sur la pile
+
     ; Configuration des registres pour printf
-    pop rcx  ; Récupération de l'argument 3
-    pop r8  ; Récupération de l'argument 2
-    pop r9  ; Récupération de l'argument 1
+    pop rsi  ; Argument 1
+    pop rdx  ; Argument 2
+    pop rcx  ; Argument 3
     lea rdi, [rel fmt_main_7]  ; Format string
+    xor eax, eax  ; Pas de flottants
+    call printf
+
+    ; Variable declaration: a
+    mov rax, 50
+    mov QWORD [rbp-24], rax
+
+    ; Variable declaration: b
+    mov rax, 20
+    mov QWORD [rbp-32], rax
+
+    ; println!("{} + {} = {}", ...)
+
+    ; Évaluation d'un argument
+
+    ; Appel de fonction: sum()
+    ; Sauvegarde des registres volatiles
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    mov rax, QWORD [rbp-24]  ; Load variable a
+    mov rdi, rax
+    mov rax, QWORD [rbp-32]  ; Load variable b
+    mov rsi, rax
+    call sum
+    ; Restauration des registres volatiles
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-32]  ; Load variable b
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Évaluation d'un argument
+    mov rax, QWORD [rbp-24]  ; Load variable a
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Configuration des registres pour printf
+    pop rsi  ; Argument 1
+    pop rdx  ; Argument 2
+    pop rcx  ; Argument 3
+    lea rdi, [rel fmt_main_10]  ; Format string
     xor eax, eax  ; Pas de flottants
     call printf
 

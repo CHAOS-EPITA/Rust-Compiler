@@ -9,6 +9,11 @@ fn main() {
     println!("{} / {} = {} (division entière)",x,y,divide(x,y));
     println!("{} * {} = {}",x,y,mult(x,y));
 
+
+
+    let a:i32 = 50;
+    let b:i32 = 20;
+    println!("{} + {} = {}",a,b,sum(a,b));
 }
 
 

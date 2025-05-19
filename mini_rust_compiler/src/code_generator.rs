@@ -362,21 +362,25 @@ impl<'a> CodeGenerator<'a> {
                     };
                     
                     // Évaluer tous les arguments en premier et les sauvegarder sur la pile
-                    for (i, arg) in args.iter().skip(1).enumerate() {
-                        code.push_str(&format!("\n    ; Évaluation de l'argument {}\n", i + 1));
+                    // Attention: on empile en ordre inverse pour faciliter leur récupération
+                    for arg in args.iter().skip(1).rev() {
+                        code.push_str("\n    ; Évaluation d'un argument\n");
                         code.push_str(&self.generate_expr_code(arg)?);
                         code.push_str("    push rax  ; Sauvegarde de l'argument sur la pile\n");
                     }
                     
-                    // Maintenant, charger tous les arguments dans les registres dans l'ordre inverse
-                    let registers = ["r9", "r8", "rcx", "rdx", "rsi"]; // Ordre inverse
-                    code.push_str("\n    ; Configuration des registres pour printf\n");
+                    // Registres dans l'ordre standard de la convention d'appel System V AMD64 ABI
+                    let registers = ["rsi", "rdx", "rcx", "r8", "r9"];
                     
-                    // Récupérer les arguments de la pile dans l'ordre inverse
-                    for i in 0..std::cmp::min(args.len() - 1, registers.len()) {
-                        let reg_index = args.len() - 2 - i; // Ordre inverse pour la pile
-                        code.push_str(&format!("    pop {}  ; Récupération de l'argument {}\n", 
-                            registers[reg_index], args.len() - i - 1));
+                    // Récupérer les arguments dans l'ordre correct
+                    code.push_str("\n    ; Configuration des registres pour printf\n");
+                    for (i, _) in args.iter().skip(1).enumerate() {
+                        if i < registers.len() {
+                            code.push_str(&format!("    pop {}  ; Argument {}\n", registers[i], i + 1));
+                        } else {
+                            // Arguments supplémentaires restent sur la pile pour printf
+                            break;
+                        }
                     }
                     
                     // Charger l'adresse du format en dernier pour ne pas l'écraser
