@@ -1,0 +1,7 @@
+[package]
+name = "mini_rust_compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Add any dependencies here, if needed.
