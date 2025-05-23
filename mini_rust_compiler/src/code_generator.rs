@@ -470,6 +470,58 @@ impl<'a> CodeGenerator<'a> {
                 // End of loop
                 code.push_str(&format!("{}:\n", end_label));
             },
+            Stmt::If(condition, then_stmt, else_stmt) => {
+                code.push_str("\n    ; If statement\n");
+                
+                // Create unique labels for if control flow
+                let else_label = format!("L_if_else_{}", self.label_counter);
+                let end_label = format!("L_if_end_{}", self.label_counter);
+                self.label_counter += 1;
+                
+                // Generate condition evaluation
+                code.push_str(&self.generate_expr_code(condition)?);
+                
+                // Test if condition is false (0)
+                code.push_str("    test rax, rax  ; Test if condition is zero\n");
+                code.push_str(&format!("    jz {}  ; Jump to else if condition is false\n", 
+                    if else_stmt.is_some() { &else_label } else { &end_label }));
+                
+                // Generate then branch
+                code.push_str("\n    ; Then branch\n");
+                if let Stmt::Block(stmts) = &**then_stmt {
+                    for (i, stmt) in stmts.iter().enumerate() {
+                        let nested_index = index * 100 + i + 1;
+                        code.push_str(&self.generate_statement(stmt, nested_index)?);
+                    }
+                } else {
+                    let nested_index = index * 100 + 1;
+                    code.push_str(&self.generate_statement(then_stmt, nested_index)?);
+                }
+                
+                // Jump to end after then branch (skip else)
+                if else_stmt.is_some() {
+                    code.push_str(&format!("    jmp {}  ; Skip else branch\n", end_label));
+                }
+                
+                // Generate else branch if it exists
+                if let Some(else_stmt) = else_stmt {
+                    code.push_str(&format!("{}:\n", else_label));
+                    code.push_str("    ; Else branch\n");
+                    
+                    if let Stmt::Block(stmts) = &**else_stmt {
+                        for (i, stmt) in stmts.iter().enumerate() {
+                            let nested_index = index * 100 + i + 2; // +2 to differentiate from then branch
+                            code.push_str(&self.generate_statement(stmt, nested_index)?);
+                        }
+                    } else {
+                        let nested_index = index * 100 + 2;
+                        code.push_str(&self.generate_statement(else_stmt, nested_index)?);
+                    }
+                }
+                
+                // End label
+                code.push_str(&format!("{}:\n", end_label));
+            },
             _ => {
                 self.error_handler.report_error(0, &format!("Type d'instruction non pris en charge: {:?}", stmt));
                 return Err(0);
@@ -550,6 +602,37 @@ impl<'a> CodeGenerator<'a> {
                     BinaryOp::Divide => {
                         code.push_str("    xor rdx, rdx\n");  // Nettoyer rdx pour la division
                         code.push_str("    idiv rcx\n");
+                    },
+                    // Add comparison operators for if conditions
+                    BinaryOp::Equal => {
+                        code.push_str("    cmp rax, rcx\n");
+                        code.push_str("    sete al\n");      // Set AL to 1 if equal, 0 otherwise
+                        code.push_str("    movzx rax, al\n"); // Zero-extend AL to RAX
+                    },
+                    BinaryOp::NotEqual => {
+                        code.push_str("    cmp rax, rcx\n");
+                        code.push_str("    setne al\n");     // Set AL to 1 if not equal, 0 otherwise
+                        code.push_str("    movzx rax, al\n");
+                    },
+                    BinaryOp::Less => {
+                        code.push_str("    cmp rax, rcx\n");
+                        code.push_str("    setl al\n");      // Set AL to 1 if less, 0 otherwise
+                        code.push_str("    movzx rax, al\n");
+                    },
+                    BinaryOp::LessEqual => {
+                        code.push_str("    cmp rax, rcx\n");
+                        code.push_str("    setle al\n");     // Set AL to 1 if less or equal, 0 otherwise
+                        code.push_str("    movzx rax, al\n");
+                    },
+                    BinaryOp::Greater => {
+                        code.push_str("    cmp rax, rcx\n");
+                        code.push_str("    setg al\n");      // Set AL to 1 if greater, 0 otherwise
+                        code.push_str("    movzx rax, al\n");
+                    },
+                    BinaryOp::GreaterEqual => {
+                        code.push_str("    cmp rax, rcx\n");
+                        code.push_str("    setge al\n");     // Set AL to 1 if greater or equal, 0 otherwise
+                        code.push_str("    movzx rax, al\n");
                     },
                     _ => {
                         self.error_handler.report_error(0, &format!("Opérateur binaire non pris en charge: {:?}", op));
@@ -667,16 +750,40 @@ impl<'a> CodeGenerator<'a> {
                 }
             },
             Stmt::If(_, then_stmt, else_stmt) => {
-                let then_index = index * 100 + 1;
-                self.process_statement_for_format_labels(then_stmt, function_name, then_index);
+                // Process then branch - handle both Block and non-Block statements
+                if let Stmt::Block(stmts) = &**then_stmt {
+                    for (i, nested_stmt) in stmts.iter().enumerate() {
+                        let nested_index = index * 100 + i + 1;
+                        self.process_statement_for_format_labels(nested_stmt, function_name, nested_index);
+                    }
+                } else {
+                    let then_index = index * 100 + 1;
+                    self.process_statement_for_format_labels(then_stmt, function_name, then_index);
+                }
+                
+                // Process else branch if it exists - handle both Block and non-Block statements
                 if let Some(else_stmt) = else_stmt {
-                    let else_index = index * 100 + 2;
-                    self.process_statement_for_format_labels(else_stmt, function_name, else_index);
+                    if let Stmt::Block(stmts) = &**else_stmt {
+                        for (i, nested_stmt) in stmts.iter().enumerate() {
+                            let nested_index = index * 100 + i + 2; // Start from +2 to avoid collision with then branch
+                            self.process_statement_for_format_labels(nested_stmt, function_name, nested_index);
+                        }
+                    } else {
+                        let else_index = index * 100 + 2;
+                        self.process_statement_for_format_labels(else_stmt, function_name, else_index);
+                    }
                 }
             },
             Stmt::While(_, body) => {
-                let body_index = index * 100 + 1;
-                self.process_statement_for_format_labels(body, function_name, body_index);
+                if let Stmt::Block(stmts) = &**body {
+                    for (i, nested_stmt) in stmts.iter().enumerate() {
+                        let nested_index = index * 100 + i + 1;
+                        self.process_statement_for_format_labels(nested_stmt, function_name, nested_index);
+                    }
+                } else {
+                    let body_index = index * 100 + 1;
+                    self.process_statement_for_format_labels(body, function_name, body_index);
+                }
             },
             Stmt::Block(stmts) => {
                 for (i, nested_stmt) in stmts.iter().enumerate() {
@@ -715,16 +822,40 @@ impl<'a> CodeGenerator<'a> {
                 }
             },
             Stmt::If(_, then_stmt, else_stmt) => {
-                let then_index = index * 100 + 1;
-                self.generate_format_strings_for_statement(then_stmt, function_name, then_index, code);
+                // Process then branch - handle both Block and non-Block statements
+                if let Stmt::Block(stmts) = &**then_stmt {
+                    for (i, nested_stmt) in stmts.iter().enumerate() {
+                        let nested_index = index * 100 + i + 1;
+                        self.generate_format_strings_for_statement(nested_stmt, function_name, nested_index, code);
+                    }
+                } else {
+                    let then_index = index * 100 + 1;
+                    self.generate_format_strings_for_statement(then_stmt, function_name, then_index, code);
+                }
+                
+                // Process else branch if it exists - handle both Block and non-Block statements
                 if let Some(else_stmt) = else_stmt {
-                    let else_index = index * 100 + 2;
-                    self.generate_format_strings_for_statement(else_stmt, function_name, else_index, code);
+                    if let Stmt::Block(stmts) = &**else_stmt {
+                        for (i, nested_stmt) in stmts.iter().enumerate() {
+                            let nested_index = index * 100 + i + 2; // Start from +2 to avoid collision with then branch
+                            self.generate_format_strings_for_statement(nested_stmt, function_name, nested_index, code);
+                        }
+                    } else {
+                        let else_index = index * 100 + 2;
+                        self.generate_format_strings_for_statement(else_stmt, function_name, else_index, code);
+                    }
                 }
             },
             Stmt::While(_, body) => {
-                let body_index = index * 100 + 1;
-                self.generate_format_strings_for_statement(body, function_name, body_index, code);
+                if let Stmt::Block(stmts) = &**body {
+                    for (i, nested_stmt) in stmts.iter().enumerate() {
+                        let nested_index = index * 100 + i + 1;
+                        self.generate_format_strings_for_statement(nested_stmt, function_name, nested_index, code);
+                    }
+                } else {
+                    let body_index = index * 100 + 1;
+                    self.generate_format_strings_for_statement(body, function_name, body_index, code);
+                }
             },
             Stmt::Block(stmts) => {
                 for (i, nested_stmt) in stmts.iter().enumerate() {
@@ -743,16 +874,18 @@ impl<'a> CodeGenerator<'a> {
                 Stmt::Let(_, _, _, _) => {
                     *count += 1;
                 },
-                Stmt::For(_, _, _, body) => {
+                Stmt::For(_, _range_start, _range_end, body) => {
                     *count += 1; // Count the loop variable
                     if let Stmt::Block(stmts) = &**body {
                         self.count_all_variables(stmts, count);
                     }
                 },
                 Stmt::If(_, then_stmt, else_stmt) => {
+                    // Count variables in then branch
                     if let Stmt::Block(stmts) = &**then_stmt {
                         self.count_all_variables(stmts, count);
                     }
+                    // Count variables in else branch if it exists
                     if let Some(else_stmt) = else_stmt {
                         if let Stmt::Block(stmts) = &**else_stmt {
                             self.count_all_variables(stmts, count);
@@ -797,9 +930,11 @@ impl<'a> CodeGenerator<'a> {
                     }
                 },
                 Stmt::If(_, then_stmt, else_stmt) => {
+                    // Assign offsets for variables in then branch
                     if let Stmt::Block(stmts) = &**then_stmt {
                         self.assign_variable_offsets(stmts, offset);
                     }
+                    // Assign offsets for variables in else branch if it exists
                     if let Some(else_stmt) = else_stmt {
                         if let Stmt::Block(stmts) = &**else_stmt {
                             self.assign_variable_offsets(stmts, offset);

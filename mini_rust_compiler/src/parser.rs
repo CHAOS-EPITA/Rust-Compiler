@@ -255,14 +255,21 @@ impl<'a> Parser<'a> {
     }
     
     fn if_statement(&mut self) -> Result<Stmt, usize> {
-        self.consume(TokenType::LeftParen, "Attendu '(' après 'if'")?;
+        // Parse condition without requiring parentheses
         let condition = self.expression()?;
-        self.consume(TokenType::RightParen, "Attendu ')' après la condition")?;
         
-        let then_branch = Box::new(self.statement()?);
+        self.consume(TokenType::LeftBrace, "Attendu '{' après la condition if")?;
+        let then_branch = Box::new(self.block_statement()?);
         
         let else_branch = if self.match_token(TokenType::Else) {
-            Some(Box::new(self.statement()?))
+            if self.match_token(TokenType::If) {
+                // Handle "else if" as nested if statement
+                Some(Box::new(self.if_statement()?))
+            } else {
+                // Regular else block
+                self.consume(TokenType::LeftBrace, "Attendu '{' après 'else'")?;
+                Some(Box::new(self.block_statement()?))
+            }
         } else {
             None
         };
@@ -271,11 +278,11 @@ impl<'a> Parser<'a> {
     }
     
     fn while_statement(&mut self) -> Result<Stmt, usize> {
-        self.consume(TokenType::LeftParen, "Attendu '(' après 'while'")?;
+        // Also update while to not require parentheses
         let condition = self.expression()?;
-        self.consume(TokenType::RightParen, "Attendu ')' après la condition")?;
         
-        let body = Box::new(self.statement()?);
+        self.consume(TokenType::LeftBrace, "Attendu '{' après la condition while")?;
+        let body = Box::new(self.block_statement()?);
         
         Ok(Stmt::While(condition, body))
     }
