@@ -10,6 +10,8 @@ pub enum TokenType {
     If,
     Else,
     While,
+    For,  // Add 'for' keyword
+    In,   // Add 'in' keyword
     
     // Types
     I32,
@@ -42,6 +44,7 @@ pub enum TokenType {
     Semicolon,
     Colon,
     Arrow,
+    DotDot,  // Add '..' token for ranges
     
     // Macro spécifiques
     PrintlnMacro,
@@ -170,6 +173,16 @@ impl<'a> Lexer<'a> {
                 self.number()
             },
             
+            // Ponctuation
+            '.' => {
+                if self.position < self.chars.len() && self.chars[self.position] == '.' {
+                    self.position += 1;
+                    Ok(Token { token_type: TokenType::DotDot, line: self.line })
+                } else {
+                    Err(self.line) // Single dot is not a valid token
+                }
+            },
+            
             // Identifiants et mots-clés
             'a'..='z' | 'A'..='Z' | '_' => {
                 self.position -= 1;
@@ -275,6 +288,8 @@ impl<'a> Lexer<'a> {
             "if" => TokenType::If,
             "else" => TokenType::Else,
             "while" => TokenType::While,
+            "for" => TokenType::For,    // Add 'for' keyword
+            "in" => TokenType::In,      // Add 'in' keyword
             "i32" => TokenType::I32,
             "println" => {
                 // Gérer les macros comme println!

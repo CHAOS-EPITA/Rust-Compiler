@@ -5,13 +5,20 @@ use std::process::Command;
 use std::collections::HashMap;
 
 use crate::error_handler::ErrorHandler;
-use crate::parser::{Program, Function, Stmt, Expr, BinaryOp, Literal};
+use crate::parser::{Program, Function, Stmt, Expr, BinaryOp, Literal, Type};
+
+// Structure pour stocker les informations sur les variables
+#[derive(Clone)]
+struct VarInfo {
+    offset: usize,
+    var_type: Type,
+}
 
 pub struct CodeGenerator<'a> {
     error_handler: &'a ErrorHandler,
     current_function: Option<String>,
     label_counter: usize,  // Utile pour générer des étiquettes uniques
-    variable_offsets: HashMap<String, usize>,
+    variable_info: HashMap<String, VarInfo>,
     function_params: HashMap<String, Vec<String>>,
     format_labels: HashMap<(String, usize), String>,
 }
@@ -22,7 +29,7 @@ impl<'a> CodeGenerator<'a> {
             error_handler,
             current_function: None,
             label_counter: 0,
-            variable_offsets: HashMap::new(),
+            variable_info: HashMap::new(),
             function_params: HashMap::new(),
             format_labels: HashMap::new(),
         }
@@ -111,6 +118,24 @@ impl<'a> CodeGenerator<'a> {
         Ok(stem)
     }
     
+    fn type_size(&self, typ: &Type) -> usize {
+        match typ {
+            Type::I8 => 1,
+            Type::I16 => 2,
+            Type::I32 => 4,
+            Type::I64 => 8,
+            Type::I128 => 16,
+            Type::F32 => 4,
+            Type::F64 => 8,
+            Type::String => 8, // Stocké comme un pointeur
+            Type::Void => 0,
+        }
+    }
+    
+    fn align_to_8_bytes(size: usize) -> usize {
+        (size + 7) & !7  // Arrondir au multiple de 8 supérieur
+    }
+    
     fn generate_asm_code(&mut self, program: &Program) -> Result<String, usize> {
         let mut code = String::new();
         
@@ -134,33 +159,12 @@ impl<'a> CodeGenerator<'a> {
         // Premier passage pour générer des étiquettes stables et les stocker dans un dictionnaire
         self.format_labels.clear();
         for function in &program.functions {
-            for (stmt_idx, stmt) in function.body.iter().enumerate() {
-                if let Stmt::Println(args) = stmt {
-                    if !args.is_empty() {
-                        if let Expr::Literal(Literal::String(_)) = &args[0] {
-                            let label = format!("fmt_{}_{}",
-                                function.name, stmt_idx);
-                            self.format_labels.insert((function.name.clone(), stmt_idx), label.clone());
-                        }
-                    }
-                }
-            }
+            self.process_function_for_format_labels(function);
         }
         
         // Maintenant générons les définitions de chaînes avec les étiquettes stables
         for function in &program.functions {
-            for (stmt_idx, stmt) in function.body.iter().enumerate() {
-                if let Stmt::Println(args) = stmt {
-                    if !args.is_empty() {
-                        if let Expr::Literal(Literal::String(format_str)) = &args[0] {
-                            let c_format = format_str.replace("{}", "%d");
-                            if let Some(label) = self.format_labels.get(&(function.name.clone(), stmt_idx)) {
-                                code.push_str(&format!("    {} db \"{}\", 10, 0\n", label, c_format));
-                            }
-                        }
-                    }
-                }
-            }
+            self.generate_format_strings_for_function(function, &mut code);
         }
         
         // Section de code
@@ -173,36 +177,43 @@ impl<'a> CodeGenerator<'a> {
         // Implémentation des fonctions (sauf main qui sera traité spécialement)
         for function in &program.functions {
             if function.name != "main" {  // Générer toutes les fonctions sauf main
-                self.variable_offsets.clear();
+                self.variable_info.clear();
                 code.push_str(&self.generate_function(function)?);
             }
         }
         
         // Traitement spécial pour main pour qu'il suive la convention d'appel C
         if let Some(main_function) = program.functions.iter().find(|f| f.name == "main") {
-            self.variable_offsets.clear();
+            self.variable_info.clear();
             self.current_function = Some("main".to_string());
             
             code.push_str("main:\n");
             code.push_str("    push rbp\n");
             code.push_str("    mov rbp, rsp\n");
             
-            // Allouer de l'espace pour les variables locales
-            let local_vars_size = main_function.body.iter()
-                .filter(|stmt| matches!(stmt, Stmt::Let(_, _, _)))
-                .count() * 8;
+            // Count all variables including loop variables
+            let mut total_vars = 0;
+            self.count_all_variables(&main_function.body, &mut total_vars);
+            
+            // Add some extra space for safety and alignment
+            let local_vars_size = (total_vars + 2) * 8; // Add 2 extra slots
+            
+            println!("Found {} total variables (including loop vars), allocating {} bytes", total_vars, local_vars_size);
             
             if local_vars_size > 0 {
-                code.push_str(&format!("    sub rsp, {}\n", local_vars_size));
+                // Ensure stack is aligned to 16 bytes (required by System V ABI)
+                let aligned_size = ((local_vars_size + 15) / 16) * 16;
+                code.push_str(&format!("    sub rsp, {}\n", aligned_size));
             }
             
             // Enregistrer les décalages des variables locales
             let mut offset = 0;
-            for stmt in &main_function.body {
-                if let Stmt::Let(name, _, _) = stmt {
-                    offset += 8;
-                    self.variable_offsets.insert(name.clone(), offset);
-                }
+            self.assign_variable_offsets(&main_function.body, &mut offset);
+            
+            // Debug: Print variable assignments
+            println!("Variable assignments:");
+            for (name, info) in &self.variable_info {
+                println!("  {} -> offset {}", name, info.offset);
             }
             
             // Générer le code du corps de la fonction main
@@ -226,7 +237,7 @@ impl<'a> CodeGenerator<'a> {
     
     fn generate_function(&mut self, function: &Function) -> Result<String, usize> {
         self.current_function = Some(function.name.clone());
-        self.variable_offsets.clear();
+        self.variable_info.clear();
         
         let mut code = String::new();
         
@@ -243,7 +254,7 @@ impl<'a> CodeGenerator<'a> {
             
             // Calculer l'espace nécessaire pour les variables locales et les paramètres
             let total_local_vars = function.body.iter()
-                .filter(|stmt| matches!(stmt, Stmt::Let(_, _, _)))
+                .filter(|stmt| matches!(stmt, Stmt::Let(_, _, _, _)))
                 .count();
             
             let stack_size = (total_local_vars + param_names.len()) * 8;
@@ -254,7 +265,10 @@ impl<'a> CodeGenerator<'a> {
             // Sauvegarder les paramètres sur la pile
             for (i, param_name) in param_names.iter().enumerate() {
                 let offset = (i + 1) * 8;
-                self.variable_offsets.insert(param_name.clone(), offset);
+                self.variable_info.insert(param_name.clone(), VarInfo {
+                    offset,
+                    var_type: Type::I32, // Default type for parameters
+                });
                 
                 if i < registers.len() {
                     code.push_str(&format!("    mov QWORD [rbp-{}], {}\n", offset, registers[i]));
@@ -269,15 +283,20 @@ impl<'a> CodeGenerator<'a> {
             let mut current_offset = param_names.len() * 8;
             
             for stmt in &function.body {
-                if let Stmt::Let(name, _, _) = stmt {
-                    current_offset += 8;
-                    self.variable_offsets.insert(name.clone(), current_offset);
+                if let Stmt::Let(name, _, _, var_type) = stmt {
+                    let var_size = self.type_size(var_type);
+                    current_offset = Self::align_to_8_bytes(current_offset + var_size);
+                    
+                    self.variable_info.insert(name.clone(), VarInfo { 
+                        offset: current_offset, 
+                        var_type: var_type.clone() 
+                    });
                 }
             }
         } else {
             // Pas de paramètres, juste gérer les variables locales
             let local_vars_size = function.body.iter()
-                .filter(|stmt| matches!(stmt, Stmt::Let(_, _, _)))
+                .filter(|stmt| matches!(stmt, Stmt::Let(_, _, _, _)))
                 .count() * 8;
             
             if local_vars_size > 0 {
@@ -287,9 +306,14 @@ impl<'a> CodeGenerator<'a> {
             // Enregistrer les décalages des variables locales
             let mut offset = 0;
             for stmt in &function.body {
-                if let Stmt::Let(name, _, _) = stmt {
-                    offset += 8;
-                    self.variable_offsets.insert(name.clone(), offset);
+                if let Stmt::Let(name, _, _, var_type) = stmt {
+                    let var_size = self.type_size(var_type);
+                    offset = Self::align_to_8_bytes(offset + var_size);
+                    
+                    self.variable_info.insert(name.clone(), VarInfo { 
+                        offset, 
+                        var_type: var_type.clone() 
+                    });
                 }
             }
         }
@@ -314,10 +338,10 @@ impl<'a> CodeGenerator<'a> {
         let mut code = String::new();
         
         match stmt {
-            Stmt::Let(name, initializer, _mutable) => {
-                let offset = self.variable_offsets.get(name).cloned().unwrap_or_else(|| {
-                    self.error_handler.report_error(0, &format!("Offset de variable introuvable pour: {}", name));
-                    8 * (index + 1)
+            Stmt::Let(name, initializer, _mutable, _var_type) => {
+                let var_info = self.variable_info.get(name).cloned().unwrap_or_else(|| {
+                    self.error_handler.report_error(0, &format!("Variable non trouvée: {}", name));
+                    VarInfo { offset: 8 * (index + 1), var_type: Type::I32 }
                 });
                 
                 code.push_str(&format!("\n    ; Variable declaration: {}\n", name));
@@ -326,7 +350,7 @@ impl<'a> CodeGenerator<'a> {
                     // Évaluer l'expression et la stocker dans rax
                     code.push_str(&self.generate_expr_code(init_expr)?);
                     // Stocker la valeur à l'emplacement approprié
-                    code.push_str(&format!("    mov QWORD [rbp-{}], rax\n", offset));
+                    code.push_str(&format!("    mov QWORD [rbp-{}], rax\n", var_info.offset));
                 }
             },
             Stmt::Return(expr) => {
@@ -396,6 +420,56 @@ impl<'a> CodeGenerator<'a> {
                 code.push_str(&self.generate_expr_code(expr)?);
                 // Le résultat est ignoré
             },
+            Stmt::For(var_name, range_start, range_end, body) => {
+                code.push_str("\n    ; For loop\n");
+                
+                // Create unique labels for loop control
+                let cond_label = format!("L_for_cond_{}", self.label_counter);
+                let end_label = format!("L_for_end_{}", self.label_counter);
+                self.label_counter += 1;
+                
+                // Get the variable offset (should already be assigned)
+                let var_offset = if let Some(var_info) = self.variable_info.get(var_name) {
+                    var_info.offset
+                } else {
+                    self.error_handler.report_error(0, &format!("Loop variable {} not found in variable_info", var_name));
+                    return Err(0);
+                };
+                
+                println!("For loop: variable {} at offset {}", var_name, var_offset);
+                
+                // Initialize loop variable with range_start
+                code.push_str(&self.generate_expr_code(range_start)?);
+                code.push_str(&format!("    mov DWORD [rbp-{}], eax  ; Initialize loop variable\n", var_offset));
+                
+                // Condition check - compare to range_end
+                code.push_str(&format!("{}:\n", cond_label));
+                code.push_str(&format!("    mov eax, DWORD [rbp-{}]  ; Load counter\n", var_offset));
+                code.push_str("    push rax\n"); // Save counter
+                code.push_str(&self.generate_expr_code(range_end)?); // Calculate end value
+                code.push_str("    mov ecx, eax  ; Move end value to ecx\n");
+                code.push_str("    pop rax\n");      // Restore counter to rax
+                code.push_str("    cmp eax, ecx  ; Compare counter with end\n");
+                code.push_str(&format!("    jge {}  ; Exit if counter >= end\n", end_label));
+                
+                // Body of the loop
+                if let Stmt::Block(stmts) = &**body {
+                    for (i, stmt) in stmts.iter().enumerate() {
+                        // Use nested indexing for proper statement label management
+                        let nested_index = index * 100 + i + 1;
+                        code.push_str(&self.generate_statement(stmt, nested_index)?);
+                    }
+                }
+                
+                // Increment counter
+                code.push_str(&format!("    mov eax, DWORD [rbp-{}]  ; Load counter for increment\n", var_offset));
+                code.push_str("    add eax, 1  ; Increment\n");
+                code.push_str(&format!("    mov DWORD [rbp-{}], eax  ; Store incremented value\n", var_offset));
+                code.push_str(&format!("    jmp {}  ; Jump back to condition\n", cond_label));
+                
+                // End of loop
+                code.push_str(&format!("{}:\n", end_label));
+            },
             _ => {
                 self.error_handler.report_error(0, &format!("Type d'instruction non pris en charge: {:?}", stmt));
                 return Err(0);
@@ -418,9 +492,23 @@ impl<'a> CodeGenerator<'a> {
                 return Err(0);
             },
             Expr::Variable(name) => {
-                // Récupérer le décalage réel de la variable
-                if let Some(offset) = self.variable_offsets.get(name) {
-                    code.push_str(&format!("    mov rax, QWORD [rbp-{}]  ; Load variable {}\n", offset, name));
+                // Récupérer les informations sur la variable
+                if let Some(var_info) = self.variable_info.get(name) {
+                    // Charger la variable selon son type, en utilisant des instructions plus sûres
+                    match var_info.var_type {
+                        Type::I32 => {
+                            code.push_str(&format!("    mov eax, DWORD [rbp-{}]  ; Load variable {}\n", var_info.offset, name));
+                            code.push_str("    movsx rax, eax  ; Sign extend to 64-bit\n");
+                        },
+                        Type::I8 => code.push_str(&format!("    movsx rax, BYTE [rbp-{}]\n", var_info.offset)),
+                        Type::I16 => code.push_str(&format!("    movsx rax, WORD [rbp-{}]\n", var_info.offset)),
+                        Type::I64 | Type::I128 => code.push_str(&format!("    mov rax, QWORD [rbp-{}]\n", var_info.offset)),
+                        Type::String => code.push_str(&format!("    mov rax, QWORD [rbp-{}]\n", var_info.offset)),
+                        _ => {
+                            code.push_str(&format!("    mov eax, DWORD [rbp-{}]  ; Load variable {}\n", var_info.offset, name));
+                            code.push_str("    movsx rax, eax  ; Sign extend to 64-bit\n");
+                        }
+                    }
                 } else {
                     // Vérifier si c'est un paramètre de fonction
                     if let Some(current_func) = &self.current_function {
@@ -529,5 +617,205 @@ impl<'a> CodeGenerator<'a> {
         }
         
         Ok(code)
+    }
+    
+    // Remove broken methods and fix the remaining ones
+    fn collect_all_strings_in_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Let(_, Some(_expr), _, _) => {
+                // Process initializer expression if needed
+            },
+            Stmt::Let(_, None, _, _) => {
+                // No initializer, nothing to process
+            },
+            Stmt::For(_, _range_start, _range_end, body) => {
+                // Process loop body
+                if let Stmt::Block(stmts) = &**body {
+                    for stmt in stmts {
+                        self.collect_all_strings_in_stmt(stmt);
+                    }
+                }
+            },
+            _ => {
+                // Handle other statement types
+            }
+        }
+    }
+    
+    fn process_function_for_format_labels(&mut self, function: &Function) {
+        for (stmt_idx, stmt) in function.body.iter().enumerate() {
+            self.process_statement_for_format_labels(stmt, &function.name, stmt_idx);
+        }
+    }
+
+    fn process_statement_for_format_labels(&mut self, stmt: &Stmt, function_name: &str, index: usize) {
+        match stmt {
+            Stmt::Println(args) => {
+                if !args.is_empty() {
+                    if let Expr::Literal(Literal::String(_)) = &args[0] {
+                        let label = format!("fmt_{}_{}", function_name, index);
+                        self.format_labels.insert((function_name.to_string(), index), label);
+                    }
+                }
+            },
+            Stmt::For(_, _, _, body) => {
+                if let Stmt::Block(stmts) = &**body {
+                    for (i, nested_stmt) in stmts.iter().enumerate() {
+                        let nested_index = index * 100 + i + 1;
+                        self.process_statement_for_format_labels(nested_stmt, function_name, nested_index);
+                    }
+                }
+            },
+            Stmt::If(_, then_stmt, else_stmt) => {
+                let then_index = index * 100 + 1;
+                self.process_statement_for_format_labels(then_stmt, function_name, then_index);
+                if let Some(else_stmt) = else_stmt {
+                    let else_index = index * 100 + 2;
+                    self.process_statement_for_format_labels(else_stmt, function_name, else_index);
+                }
+            },
+            Stmt::While(_, body) => {
+                let body_index = index * 100 + 1;
+                self.process_statement_for_format_labels(body, function_name, body_index);
+            },
+            Stmt::Block(stmts) => {
+                for (i, nested_stmt) in stmts.iter().enumerate() {
+                    let nested_index = index * 100 + i + 1;
+                    self.process_statement_for_format_labels(nested_stmt, function_name, nested_index);
+                }
+            },
+            _ => {}
+        }
+    }
+
+    fn generate_format_strings_for_function(&mut self, function: &Function, code: &mut String) {
+        for (stmt_idx, stmt) in function.body.iter().enumerate() {
+            self.generate_format_strings_for_statement(stmt, &function.name, stmt_idx, code);
+        }
+    }
+
+    fn generate_format_strings_for_statement(&mut self, stmt: &Stmt, function_name: &str, index: usize, code: &mut String) {
+        match stmt {
+            Stmt::Println(args) => {
+                if !args.is_empty() {
+                    if let Expr::Literal(Literal::String(format_str)) = &args[0] {
+                        let c_format = format_str.replace("{}", "%d");
+                        if let Some(label) = self.format_labels.get(&(function_name.to_string(), index)) {
+                            code.push_str(&format!("    {} db \"{}\", 10, 0\n", label, c_format));
+                        }
+                    }
+                }
+            },
+            Stmt::For(_, _, _, body) => {
+                if let Stmt::Block(stmts) = &**body {
+                    for (i, nested_stmt) in stmts.iter().enumerate() {
+                        let nested_index = index * 100 + i + 1;
+                        self.generate_format_strings_for_statement(nested_stmt, function_name, nested_index, code);
+                    }
+                }
+            },
+            Stmt::If(_, then_stmt, else_stmt) => {
+                let then_index = index * 100 + 1;
+                self.generate_format_strings_for_statement(then_stmt, function_name, then_index, code);
+                if let Some(else_stmt) = else_stmt {
+                    let else_index = index * 100 + 2;
+                    self.generate_format_strings_for_statement(else_stmt, function_name, else_index, code);
+                }
+            },
+            Stmt::While(_, body) => {
+                let body_index = index * 100 + 1;
+                self.generate_format_strings_for_statement(body, function_name, body_index, code);
+            },
+            Stmt::Block(stmts) => {
+                for (i, nested_stmt) in stmts.iter().enumerate() {
+                    let nested_index = index * 100 + i + 1;
+                    self.generate_format_strings_for_statement(nested_stmt, function_name, nested_index, code);
+                }
+            },
+            _ => {}
+        }
+    }
+    
+    // New helper method to count all variables recursively
+    fn count_all_variables(&self, statements: &[Stmt], count: &mut usize) {
+        for stmt in statements {
+            match stmt {
+                Stmt::Let(_, _, _, _) => {
+                    *count += 1;
+                },
+                Stmt::For(_, _, _, body) => {
+                    *count += 1; // Count the loop variable
+                    if let Stmt::Block(stmts) = &**body {
+                        self.count_all_variables(stmts, count);
+                    }
+                },
+                Stmt::If(_, then_stmt, else_stmt) => {
+                    if let Stmt::Block(stmts) = &**then_stmt {
+                        self.count_all_variables(stmts, count);
+                    }
+                    if let Some(else_stmt) = else_stmt {
+                        if let Stmt::Block(stmts) = &**else_stmt {
+                            self.count_all_variables(stmts, count);
+                        }
+                    }
+                },
+                Stmt::While(_, body) => {
+                    if let Stmt::Block(stmts) = &**body {
+                        self.count_all_variables(stmts, count);
+                    }
+                },
+                Stmt::Block(stmts) => {
+                    self.count_all_variables(stmts, count);
+                },
+                _ => {}
+            }
+        }
+    }
+
+    // New helper method to assign offsets to all variables
+    fn assign_variable_offsets(&mut self, statements: &[Stmt], offset: &mut usize) {
+        for stmt in statements {
+            match stmt {
+                Stmt::Let(name, _, _, var_type) => {
+                    *offset += 8;
+                    self.variable_info.insert(name.clone(), VarInfo { 
+                        offset: *offset, 
+                        var_type: var_type.clone() 
+                    });
+                },
+                Stmt::For(var_name, _, _, body) => {
+                    // Assign offset for loop variable if not already assigned
+                    if !self.variable_info.contains_key(var_name) {
+                        *offset += 8;
+                        self.variable_info.insert(var_name.clone(), VarInfo { 
+                            offset: *offset, 
+                            var_type: Type::I32 
+                        });
+                    }
+                    if let Stmt::Block(stmts) = &**body {
+                        self.assign_variable_offsets(stmts, offset);
+                    }
+                },
+                Stmt::If(_, then_stmt, else_stmt) => {
+                    if let Stmt::Block(stmts) = &**then_stmt {
+                        self.assign_variable_offsets(stmts, offset);
+                    }
+                    if let Some(else_stmt) = else_stmt {
+                        if let Stmt::Block(stmts) = &**else_stmt {
+                            self.assign_variable_offsets(stmts, offset);
+                        }
+                    }
+                },
+                Stmt::While(_, body) => {
+                    if let Stmt::Block(stmts) = &**body {
+                        self.assign_variable_offsets(stmts, offset);
+                    }
+                },
+                Stmt::Block(stmts) => {
+                    self.assign_variable_offsets(stmts, offset);
+                },
+                _ => {}
+            }
+        }
     }
 }

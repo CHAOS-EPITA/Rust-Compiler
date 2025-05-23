@@ -14,6 +14,15 @@ fn main() {
     let a:i32 = 50;
     let b:i32 = 20;
     println!("{} + {} = {}",a,b,sum(a,b));
+
+    for i in 0..10 {
+        println!("i = {}", i);
+    }
+    println!("Boucle terminé");
+
+    for j in 10..20 {
+        println!("j = {}", j);
+    }
 }
 
 

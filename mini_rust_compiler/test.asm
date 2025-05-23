@@ -9,6 +9,9 @@ section .data
     fmt_main_6 db "%d / %d = %d (division entière)", 10, 0
     fmt_main_7 db "%d * %d = %d", 10, 0
     fmt_main_10 db "%d + %d = %d", 10, 0
+    fmt_main_1101 db "i = %d", 10, 0
+    fmt_main_12 db "Boucle terminé", 10, 0
+    fmt_main_1301 db "j = %d", 10, 0
 
 section .text
     extern printf
@@ -23,9 +26,11 @@ sum:
     mov QWORD [rbp-16], rsi
 
     ; Return statement
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rcx, rax
     pop rax
     add rax, rcx
@@ -46,9 +51,11 @@ diff:
     mov QWORD [rbp-16], rsi
 
     ; Return statement
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rcx, rax
     pop rax
     sub rax, rcx
@@ -69,9 +76,11 @@ divide:
     mov QWORD [rbp-16], rsi
 
     ; Return statement
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rcx, rax
     pop rax
     xor rdx, rdx
@@ -93,9 +102,11 @@ mult:
     mov QWORD [rbp-16], rsi
 
     ; Return statement
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rcx, rax
     pop rax
     imul rax, rcx
@@ -111,7 +122,7 @@ mult:
 main:
     push rbp
     mov rbp, rsp
-    sub rsp, 32
+    sub rsp, 64
 
     ; Variable declaration: x
     mov rax, 10
@@ -124,11 +135,13 @@ main:
     ; println!("x = {}, y = {}", ...)
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Configuration des registres pour printf
@@ -155,9 +168,11 @@ main:
     push rdx
     push rsi
     push rdi
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rdi, rax
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rsi, rax
     call sum
     ; Restauration des registres volatiles
@@ -168,11 +183,13 @@ main:
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Configuration des registres pour printf
@@ -193,9 +210,11 @@ main:
     push rdx
     push rsi
     push rdi
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rdi, rax
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rsi, rax
     call diff
     ; Restauration des registres volatiles
@@ -206,11 +225,13 @@ main:
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Configuration des registres pour printf
@@ -231,9 +252,11 @@ main:
     push rdx
     push rsi
     push rdi
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rdi, rax
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rsi, rax
     call divide
     ; Restauration des registres volatiles
@@ -244,11 +267,13 @@ main:
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Configuration des registres pour printf
@@ -269,9 +294,11 @@ main:
     push rdx
     push rsi
     push rdi
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rdi, rax
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rsi, rax
     call mult
     ; Restauration des registres volatiles
@@ -282,11 +309,13 @@ main:
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-16]  ; Load variable y
+    mov eax, DWORD [rbp-16]  ; Load variable y
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-8]  ; Load variable x
+    mov eax, DWORD [rbp-8]  ; Load variable x
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Configuration des registres pour printf
@@ -315,9 +344,11 @@ main:
     push rdx
     push rsi
     push rdi
-    mov rax, QWORD [rbp-24]  ; Load variable a
+    mov eax, DWORD [rbp-24]  ; Load variable a
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rdi, rax
-    mov rax, QWORD [rbp-32]  ; Load variable b
+    mov eax, DWORD [rbp-32]  ; Load variable b
+    movsx rax, eax  ; Sign extend to 64-bit
     mov rsi, rax
     call sum
     ; Restauration des registres volatiles
@@ -328,11 +359,13 @@ main:
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-32]  ; Load variable b
+    mov eax, DWORD [rbp-32]  ; Load variable b
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Évaluation d'un argument
-    mov rax, QWORD [rbp-24]  ; Load variable a
+    mov eax, DWORD [rbp-24]  ; Load variable a
+    movsx rax, eax  ; Sign extend to 64-bit
     push rax  ; Sauvegarde de l'argument sur la pile
 
     ; Configuration des registres pour printf
@@ -342,6 +375,73 @@ main:
     lea rdi, [rel fmt_main_10]  ; Format string
     xor eax, eax  ; Pas de flottants
     call printf
+
+    ; For loop
+    mov rax, 0
+    mov DWORD [rbp-40], eax  ; Initialize loop variable
+L_for_cond_0:
+    mov eax, DWORD [rbp-40]  ; Load counter
+    push rax
+    mov rax, 10
+    mov ecx, eax  ; Move end value to ecx
+    pop rax
+    cmp eax, ecx  ; Compare counter with end
+    jge L_for_end_0  ; Exit if counter >= end
+
+    ; println!("i = {}", ...)
+
+    ; Évaluation d'un argument
+    mov eax, DWORD [rbp-40]  ; Load variable i
+    movsx rax, eax  ; Sign extend to 64-bit
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Configuration des registres pour printf
+    pop rsi  ; Argument 1
+    lea rdi, [rel fmt_main_1101]  ; Format string
+    xor eax, eax  ; Pas de flottants
+    call printf
+    mov eax, DWORD [rbp-40]  ; Load counter for increment
+    add eax, 1  ; Increment
+    mov DWORD [rbp-40], eax  ; Store incremented value
+    jmp L_for_cond_0  ; Jump back to condition
+L_for_end_0:
+
+    ; println!("Boucle terminé", ...)
+
+    ; Configuration des registres pour printf
+    lea rdi, [rel fmt_main_12]  ; Format string
+    xor eax, eax  ; Pas de flottants
+    call printf
+
+    ; For loop
+    mov rax, 10
+    mov DWORD [rbp-48], eax  ; Initialize loop variable
+L_for_cond_1:
+    mov eax, DWORD [rbp-48]  ; Load counter
+    push rax
+    mov rax, 20
+    mov ecx, eax  ; Move end value to ecx
+    pop rax
+    cmp eax, ecx  ; Compare counter with end
+    jge L_for_end_1  ; Exit if counter >= end
+
+    ; println!("j = {}", ...)
+
+    ; Évaluation d'un argument
+    mov eax, DWORD [rbp-48]  ; Load variable j
+    movsx rax, eax  ; Sign extend to 64-bit
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Configuration des registres pour printf
+    pop rsi  ; Argument 1
+    lea rdi, [rel fmt_main_1301]  ; Format string
+    xor eax, eax  ; Pas de flottants
+    call printf
+    mov eax, DWORD [rbp-48]  ; Load counter for increment
+    add eax, 1  ; Increment
+    mov DWORD [rbp-48], eax  ; Store incremented value
+    jmp L_for_cond_1  ; Jump back to condition
+L_for_end_1:
 
     ; Épilogue de main avec valeur de retour 0
     mov eax, 0

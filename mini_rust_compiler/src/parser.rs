@@ -38,14 +38,28 @@ pub enum Literal {
     String(String),
 }
 
+#[derive(Debug, Clone)]
+pub enum Type {
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    F32,
+    F64,
+    String,
+    Void,
+}
+
 #[derive(Debug)]
 pub enum Stmt {
     Expression(Expr),
-    Let(String, Option<Expr>, bool), // Nom, valeur initiale, mutable
+    Let(String, Option<Expr>, bool, Type), // Nom, valeur initiale, mutable, type
     Assign(String, Expr),
     Block(Vec<Stmt>),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
+    For(String, Expr, Expr, Box<Stmt>),  // Variable, range_start, range_end, body
     Return(Option<Expr>),
     Println(Vec<Expr>),
 }
@@ -179,6 +193,8 @@ impl<'a> Parser<'a> {
             self.if_statement()
         } else if self.match_token(TokenType::While) {
             self.while_statement()
+        } else if self.match_token(TokenType::For) {
+            self.for_statement()  // Add for statement handling
         } else if self.check(TokenType::PrintlnMacro) {
             self.println_statement()
         } else {
@@ -195,13 +211,12 @@ impl<'a> Parser<'a> {
         };
         self.advance();
         
-        // Type
-        self.consume(TokenType::Colon, "Attendu ':' après le nom de la variable")?;
-        if let TokenType::I32 = self.peek().token_type {
-            self.advance();
+        // Parse le type
+        let var_type = if self.match_token(TokenType::Colon) {
+            self.type_annotation()?
         } else {
-            return Err(self.peek().line);
-        }
+            Type::I32  // Type par défaut
+        };
         
         // Initialisation
         let initializer = if self.match_token(TokenType::Assign) {
@@ -212,7 +227,7 @@ impl<'a> Parser<'a> {
         
         self.consume(TokenType::Semicolon, "Attendu ';' après la déclaration")?;
         
-        Ok(Stmt::Let(name, initializer, mutable))
+        Ok(Stmt::Let(name, initializer, mutable, var_type))  // Include type
     }
     
     fn return_statement(&mut self) -> Result<Stmt, usize> {
@@ -263,6 +278,43 @@ impl<'a> Parser<'a> {
         let body = Box::new(self.statement()?);
         
         Ok(Stmt::While(condition, body))
+    }
+    
+    // New method for parsing for loops
+    fn for_statement(&mut self) -> Result<Stmt, usize> {
+        // Get the loop variable name
+        let var_name = match &self.peek().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => {
+                self.error_handler.report_error(self.peek().line, "Expected identifier after 'for'");
+                return Err(self.peek().line);
+            }
+        };
+        self.advance();
+        
+        // Expect 'in' keyword
+        self.consume(TokenType::In, "Expected 'in' after identifier in for loop")?;
+        
+        // Parse range start expression
+        let range_start = self.expression()?;
+        
+        // Expect '..' token
+        self.consume(TokenType::DotDot, "Expected '..' in range expression")?;
+        
+        // Parse range end expression
+        let range_end = self.expression()?;
+        
+        // Parse loop body
+        self.consume(TokenType::LeftBrace, "Expected '{' before for loop body")?;
+        let body = self.block_statement()?;
+        
+        // Wrap the body in a Box
+        if let Stmt::Block(statements) = body {
+            Ok(Stmt::For(var_name, range_start, range_end, Box::new(Stmt::Block(statements))))
+        } else {
+            // This shouldn't happen since block_statement always returns a Stmt::Block
+            Err(self.peek().line)
+        }
     }
     
     fn println_statement(&mut self) -> Result<Stmt, usize> {
@@ -505,5 +557,58 @@ impl<'a> Parser<'a> {
     
     fn previous(&self) -> &Token {
         &self.tokens[self.current - 1]
+    }
+    
+    fn type_annotation(&mut self) -> Result<Type, usize> {
+        match &self.peek().token_type {
+            TokenType::I32 => {
+                self.advance();
+                Ok(Type::I32)
+            },
+            TokenType::Identifier(type_name) => {
+                match type_name.as_str() {
+                    "i8" => {
+                        self.advance();
+                        Ok(Type::I8)
+                    },
+                    "i16" => {
+                        self.advance();
+                        Ok(Type::I16)
+                    },
+                    "i32" => {
+                        self.advance();
+                        Ok(Type::I32)
+                    },
+                    "i64" => {
+                        self.advance();
+                        Ok(Type::I64)
+                    },
+                    "i128" => {
+                        self.advance();
+                        Ok(Type::I128)
+                    },
+                    "f32" => {
+                        self.advance();
+                        Ok(Type::F32)
+                    },
+                    "f64" => {
+                        self.advance();
+                        Ok(Type::F64)
+                    },
+                    "String" => {
+                        self.advance();
+                        Ok(Type::String)
+                    },
+                    _ => {
+                        self.error_handler.report_error(self.peek().line, &format!("Type inconnu: {}", type_name));
+                        Err(self.peek().line)
+                    }
+                }
+            },
+            _ => {
+                self.error_handler.report_error(self.peek().line, "Type attendu");
+                Err(self.peek().line)
+            }
+        }
     }
 }
