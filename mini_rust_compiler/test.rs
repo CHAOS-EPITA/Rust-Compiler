@@ -23,6 +23,11 @@ fn main() {
     for j in 10..20 {
         println!("j = {}", j);
     }
+
+    println!("Testing Vec::new()");
+    
+    let mut numbers: Vec<i32> = Vec::new();
+    println!("j = {}", numbers.len());  // Fixed: 'number' -> 'numbers'
 }
 
 

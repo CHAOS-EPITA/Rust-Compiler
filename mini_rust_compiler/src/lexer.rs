@@ -10,8 +10,12 @@ pub enum TokenType {
     If,
     Else,
     While,
-    For,  // Add 'for' keyword
-    In,   // Add 'in' keyword
+    For,
+    In,
+    Vec,  // Add Vec keyword
+    New,  // Add new keyword
+    Push, // Add push method
+    Len,  // Add len method
     
     // Types
     I32,
@@ -40,11 +44,15 @@ pub enum TokenType {
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,  // Add [ for vec literals and indexing
+    RightBracket, // Add ] for vec literals and indexing
     Comma,
     Semicolon,
     Colon,
+    DoubleColon,  // Add :: for Vec::new syntax
     Arrow,
-    DotDot,  // Add '..' token for ranges
+    DotDot,
+    Dot,  // Add . for method calls
     
     // Macro spécifiques
     PrintlnMacro,
@@ -130,9 +138,18 @@ impl<'a> Lexer<'a> {
             ')' => Ok(Token { token_type: TokenType::RightParen, line: self.line }),
             '{' => Ok(Token { token_type: TokenType::LeftBrace, line: self.line }),
             '}' => Ok(Token { token_type: TokenType::RightBrace, line: self.line }),
+            '[' => Ok(Token { token_type: TokenType::LeftBracket, line: self.line }),
+            ']' => Ok(Token { token_type: TokenType::RightBracket, line: self.line }),
             ',' => Ok(Token { token_type: TokenType::Comma, line: self.line }),
             ';' => Ok(Token { token_type: TokenType::Semicolon, line: self.line }),
-            ':' => Ok(Token { token_type: TokenType::Colon, line: self.line }),
+            ':' => {
+                if self.position < self.chars.len() && self.chars[self.position] == ':' {
+                    self.position += 1; // Consume the second ':'
+                    Ok(Token { token_type: TokenType::DoubleColon, line: self.line })
+                } else {
+                    Ok(Token { token_type: TokenType::Colon, line: self.line })
+                }
+            },
             
             // Opérateurs composés
             '=' => {
@@ -179,7 +196,7 @@ impl<'a> Lexer<'a> {
                     self.position += 1;
                     Ok(Token { token_type: TokenType::DotDot, line: self.line })
                 } else {
-                    Err(self.line) // Single dot is not a valid token
+                    Ok(Token { token_type: TokenType::Dot, line: self.line })
                 }
             },
             
@@ -288,8 +305,10 @@ impl<'a> Lexer<'a> {
             "if" => TokenType::If,
             "else" => TokenType::Else,
             "while" => TokenType::While,
-            "for" => TokenType::For,    // Add 'for' keyword
-            "in" => TokenType::In,      // Add 'in' keyword
+            "for" => TokenType::For,
+            "in" => TokenType::In,
+            "Vec" => TokenType::Vec,
+            "new" => TokenType::New,
             "i32" => TokenType::I32,
             "println" => {
                 // Gérer les macros comme println!

@@ -10,6 +10,9 @@ pub enum Expr {
     Variable(String),
     Call(String, Vec<Expr>),
     FunctionCall(String, Vec<Expr>),
+    VecNew(Vec<Expr>),        // Vec::new() or vec![...]
+    VecIndex(Box<Expr>, Box<Expr>), // vec[index]
+    MethodCall(Box<Expr>, String, Vec<Expr>), // obj.method(args)
 }
 
 #[derive(Debug)]
@@ -36,6 +39,7 @@ pub enum UnaryOp {
 pub enum Literal {
     Int(i32),
     String(String),
+    VecLiteral(Vec<Expr>),    // [1, 2, 3]
 }
 
 #[derive(Debug, Clone)]
@@ -48,18 +52,19 @@ pub enum Type {
     F32,
     F64,
     String,
+    Vec(Box<Type>),  // Vec<T>
     Void,
 }
 
 #[derive(Debug)]
 pub enum Stmt {
     Expression(Expr),
-    Let(String, Option<Expr>, bool, Type), // Nom, valeur initiale, mutable, type
+    Let(String, Option<Expr>, bool, Type),
     Assign(String, Expr),
     Block(Vec<Stmt>),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
-    For(String, Expr, Expr, Box<Stmt>),  // Variable, range_start, range_end, body
+    For(String, Expr, Expr, Box<Stmt>),
     Return(Option<Expr>),
     Println(Vec<Expr>),
 }
@@ -330,9 +335,11 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::LeftParen, "Attendu '(' après 'println!'")?;
         
         let mut args = Vec::new();
-        if let TokenType::StringLiteral(_) = &self.peek().token_type {
+        if !self.check(TokenType::RightParen) {
+            // Parse the first argument (can be string literal or any expression)
             args.push(self.expression()?);
             
+            // Parse additional arguments separated by commas
             while self.match_token(TokenType::Comma) {
                 args.push(self.expression()?);
             }
@@ -458,9 +465,42 @@ impl<'a> Parser<'a> {
     fn call(&mut self) -> Result<Expr, usize> {
         let mut expr = self.primary()?;
         
-        if self.check(TokenType::LeftParen) {
-            if let Expr::Variable(callee) = expr {
-                self.advance(); // Consommer (
+        loop {
+            if self.check(TokenType::LeftParen) {
+                if let Expr::Variable(callee) = expr {
+                    self.advance(); // Consume (
+                    
+                    let mut arguments = Vec::new();
+                    if !self.check(TokenType::RightParen) {
+                        loop {
+                            arguments.push(self.expression()?);
+                            
+                            if !self.match_token(TokenType::Comma) {
+                                break;
+                            }
+                        }
+                    }
+                    
+                    self.consume(TokenType::RightParen, "Attendu ')' après les arguments")?;
+                    
+                    expr = Expr::FunctionCall(callee, arguments);
+                } else {
+                    return Err(self.peek().line);
+                }
+            } else if self.match_token(TokenType::LeftBracket) {
+                // Array/Vec indexing: expr[index]
+                let index = self.expression()?;
+                self.consume(TokenType::RightBracket, "Expected ']' after index")?;
+                expr = Expr::VecIndex(Box::new(expr), Box::new(index));
+            } else if self.match_token(TokenType::Dot) {
+                // Method call: expr.method(args)
+                let method_name = match &self.peek().token_type {
+                    TokenType::Identifier(name) => name.clone(),
+                    _ => return Err(self.peek().line),
+                };
+                self.advance();
+                
+                self.consume(TokenType::LeftParen, "Expected '(' after method name")?;
                 
                 let mut arguments = Vec::new();
                 if !self.check(TokenType::RightParen) {
@@ -473,11 +513,11 @@ impl<'a> Parser<'a> {
                     }
                 }
                 
-                self.consume(TokenType::RightParen, "Attendu ')' après les arguments")?;
+                self.consume(TokenType::RightParen, "Expected ')' after method arguments")?;
                 
-                expr = Expr::FunctionCall(callee, arguments);
+                expr = Expr::MethodCall(Box::new(expr), method_name, arguments);
             } else {
-                return Err(self.peek().line);
+                break;
             }
         }
         
@@ -493,6 +533,76 @@ impl<'a> Parser<'a> {
             let value = value.clone();
             self.advance();
             return Ok(Expr::Literal(Literal::String(value)));
+        } else if self.match_token(TokenType::LeftBracket) {
+            // Vec literal: [1, 2, 3]
+            let mut elements = Vec::new();
+            
+            if !self.check(TokenType::RightBracket) {
+                loop {
+                    elements.push(self.expression()?);
+                    
+                    if !self.match_token(TokenType::Comma) {
+                        break;
+                    }
+                }
+            }
+            
+            self.consume(TokenType::RightBracket, "Expected ']' after vec elements")?;
+            return Ok(Expr::Literal(Literal::VecLiteral(elements)));
+        } else if self.match_token(TokenType::Vec) {
+            // Vec::new() parsing
+            if !self.check(TokenType::DoubleColon) {
+                self.error_handler.report_error(self.peek().line, &format!("Expected '::' after 'Vec', found {:?}", self.peek().token_type));
+                return Err(self.peek().line);
+            }
+            self.advance(); // consume '::'
+            
+            // Check if the next token is TokenType::New or Identifier("new")
+            match &self.peek().token_type {
+                TokenType::New => {
+                    self.advance(); // consume 'new'
+                    
+                    if !self.check(TokenType::LeftParen) {
+                        self.error_handler.report_error(self.peek().line, &format!("Expected '(' after 'Vec::new', found {:?}", self.peek().token_type));
+                        return Err(self.peek().line);
+                    }
+                    self.advance(); // consume '('
+                    
+                    if !self.check(TokenType::RightParen) {
+                        self.error_handler.report_error(self.peek().line, &format!("Expected ')' after 'Vec::new(', found {:?}", self.peek().token_type));
+                        return Err(self.peek().line);
+                    }
+                    self.advance(); // consume ')'
+                    
+                    return Ok(Expr::VecNew(Vec::new()));
+                },
+                TokenType::Identifier(method_name) => {
+                    if method_name == "new" {
+                        self.advance(); // consume 'new'
+                        
+                        if !self.check(TokenType::LeftParen) {
+                            self.error_handler.report_error(self.peek().line, &format!("Expected '(' after 'Vec::new', found {:?}", self.peek().token_type));
+                            return Err(self.peek().line);
+                        }
+                        self.advance(); // consume '('
+                        
+                        if !self.check(TokenType::RightParen) {
+                            self.error_handler.report_error(self.peek().line, &format!("Expected ')' after 'Vec::new(', found {:?}", self.peek().token_type));
+                            return Err(self.peek().line);
+                        }
+                        self.advance(); // consume ')'
+                        
+                        return Ok(Expr::VecNew(Vec::new()));
+                    } else {
+                        self.error_handler.report_error(self.peek().line, &format!("Expected 'new' after 'Vec::', found '{}'", method_name));
+                        return Err(self.peek().line);
+                    }
+                },
+                _ => {
+                    self.error_handler.report_error(self.peek().line, &format!("Expected method name after 'Vec::', found {:?}", self.peek().token_type));
+                    return Err(self.peek().line);
+                }
+            }
         } else if let TokenType::Identifier(name) = &self.peek().token_type.clone() {
             let name = name.clone();
             self.advance();
@@ -503,6 +613,7 @@ impl<'a> Parser<'a> {
             return Ok(expr);
         }
         
+        self.error_handler.report_error(self.peek().line, &format!("Unexpected token: {:?}", self.peek().token_type));
         Err(self.peek().line)
     }
     
@@ -522,6 +633,7 @@ impl<'a> Parser<'a> {
                 return true;
             }
         }
+        
         false
     }
     
@@ -534,7 +646,20 @@ impl<'a> Parser<'a> {
             (TokenType::IntLiteral(_), TokenType::IntLiteral(_)) => true,
             (TokenType::StringLiteral(_), TokenType::StringLiteral(_)) => true,
             (TokenType::Identifier(_), TokenType::Identifier(_)) => true,
-            (a, b) => a == b,
+            (TokenType::DoubleColon, TokenType::DoubleColon) => true,
+            (TokenType::New, TokenType::New) => true,
+            (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
+        }
+    }
+    
+    fn consume(&mut self, token_type: TokenType, message: &str) -> Result<&Token, usize> {
+        if self.check(token_type) {
+            Ok(self.advance())
+        } else {
+            // Add more detailed error reporting
+            let current_token = &self.peek().token_type;
+            self.error_handler.report_error(self.peek().line, &format!("{} (found {:?})", message, current_token));
+            Err(self.peek().line)
         }
     }
     
@@ -545,13 +670,8 @@ impl<'a> Parser<'a> {
         self.previous()
     }
     
-    fn consume(&mut self, token_type: TokenType, message: &str) -> Result<&Token, usize> {
-        if self.check(token_type) {
-            Ok(self.advance())
-        } else {
-            self.error_handler.report_error(self.peek().line, message);
-            Err(self.peek().line)
-        }
+    fn previous(&self) -> &Token {
+        &self.tokens[self.current - 1]
     }
     
     fn is_at_end(&self) -> bool {
@@ -562,50 +682,32 @@ impl<'a> Parser<'a> {
         &self.tokens[self.current]
     }
     
-    fn previous(&self) -> &Token {
-        &self.tokens[self.current - 1]
-    }
-    
     fn type_annotation(&mut self) -> Result<Type, usize> {
         match &self.peek().token_type {
+            TokenType::EOF => Err(self.peek().line),
             TokenType::I32 => {
                 self.advance();
                 Ok(Type::I32)
             },
+            TokenType::Vec => {
+                self.advance();
+                self.consume(TokenType::Less, "Expected '<' after 'Vec'")?;
+                let inner_type = self.type_annotation()?;
+                self.consume(TokenType::Greater, "Expected '>' after Vec type parameter")?;
+                Ok(Type::Vec(Box::new(inner_type)))
+            },
             TokenType::Identifier(type_name) => {
+                let type_name = type_name.clone(); // Clone the string to avoid borrowing issues
+                self.advance();
                 match type_name.as_str() {
-                    "i8" => {
-                        self.advance();
-                        Ok(Type::I8)
-                    },
-                    "i16" => {
-                        self.advance();
-                        Ok(Type::I16)
-                    },
-                    "i32" => {
-                        self.advance();
-                        Ok(Type::I32)
-                    },
-                    "i64" => {
-                        self.advance();
-                        Ok(Type::I64)
-                    },
-                    "i128" => {
-                        self.advance();
-                        Ok(Type::I128)
-                    },
-                    "f32" => {
-                        self.advance();
-                        Ok(Type::F32)
-                    },
-                    "f64" => {
-                        self.advance();
-                        Ok(Type::F64)
-                    },
-                    "String" => {
-                        self.advance();
-                        Ok(Type::String)
-                    },
+                    "i8" => Ok(Type::I8),
+                    "i16" => Ok(Type::I16),
+                    "i32" => Ok(Type::I32),
+                    "i64" => Ok(Type::I64),
+                    "i128" => Ok(Type::I128),
+                    "f32" => Ok(Type::F32),
+                    "f64" => Ok(Type::F64),
+                    "String" => Ok(Type::String),
                     _ => {
                         self.error_handler.report_error(self.peek().line, &format!("Type inconnu: {}", type_name));
                         Err(self.peek().line)

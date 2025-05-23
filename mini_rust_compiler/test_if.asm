@@ -20,7 +20,7 @@ section .text
 main:
     push rbp
     mov rbp, rsp
-    sub rsp, 32
+    sub rsp, 160
 
     ; Variable declaration: x
     mov rax, 10

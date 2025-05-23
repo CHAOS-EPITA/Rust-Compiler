@@ -128,6 +128,7 @@ impl<'a> CodeGenerator<'a> {
             Type::F32 => 4,
             Type::F64 => 8,
             Type::String => 8, // Stocké comme un pointeur
+            Type::Vec(_) => 8, // Stocké comme un pointeur vers la structure du vecteur
             Type::Void => 0,
         }
     }
@@ -195,10 +196,10 @@ impl<'a> CodeGenerator<'a> {
             let mut total_vars = 0;
             self.count_all_variables(&main_function.body, &mut total_vars);
             
-            // Add some extra space for safety and alignment
-            let local_vars_size = (total_vars + 2) * 8; // Add 2 extra slots
+            // Allouer plus d'espace pour les vecteurs et les variables temporaires
+            let local_vars_size = ((total_vars + 2) * 8) + 128; // Extra 128 bytes for vector storage
             
-            println!("Found {} total variables (including loop vars), allocating {} bytes", total_vars, local_vars_size);
+            println!("Found {} total variables, allocating {} bytes (including vector space)", total_vars, local_vars_size);
             
             if local_vars_size > 0 {
                 // Ensure stack is aligned to 16 bytes (required by System V ABI)
@@ -539,9 +540,129 @@ impl<'a> CodeGenerator<'a> {
                 code.push_str(&format!("    mov rax, {}\n", value));
             },
             Expr::Literal(Literal::String(_value)) => {
-                // Renommé avec underscore pour éviter l'avertissement
                 self.error_handler.report_error(0, "Les chaînes littérales ne sont pas encore prises en charge dans les expressions");
                 return Err(0);
+            },
+            Expr::Literal(Literal::VecLiteral(elements)) => {
+                // Créer un vecteur statique sur la pile de manière plus sûre
+                code.push_str("    ; Vec literal - creating static array\n");
+                
+                // Calculer un offset sûr dans l'espace de pile alloué
+                let base_offset = 64;
+                
+                // Stocker la taille du vecteur en premier
+                code.push_str(&format!("    mov DWORD [rbp-{}], {}  ; Store vec length\n", 
+                    base_offset, elements.len()));
+                
+                // Stocker les éléments APRÈS la taille avec des adresses croissantes
+                for (i, element) in elements.iter().enumerate() {
+                    code.push_str(&self.generate_expr_code(element)?);
+                    // Stocker élément i à (base_offset - 4) + (i * 4) pour avoir des adresses croissantes
+                    let element_offset = base_offset - 4 - (i * 4);
+                    code.push_str(&format!("    mov DWORD [rbp-{}], eax  ; Store vec element {}\n", 
+                        element_offset, i));
+                }
+                
+                // Retourner l'adresse du vecteur (pointant vers la taille)
+                code.push_str(&format!("    lea rax, [rbp-{}]  ; Return vec base address (points to length)\n", base_offset));
+            },
+            Expr::VecNew(_) => {
+                // Vec::new() - créer un vecteur vide
+                code.push_str("    ; Vec::new() - creating empty vector\n");
+                let base_offset = 128;
+                // Initialiser la taille à 0
+                code.push_str(&format!("    mov DWORD [rbp-{}], 0  ; Initialize empty vec length\n", base_offset - 4));
+                // Retourner l'adresse du vecteur (pointant vers la taille)
+                code.push_str(&format!("    lea rax, [rbp-{}]  ; Return empty vec address\n", base_offset - 4));
+            },
+            Expr::VecIndex(vec_expr, index_expr) => {
+                // vec[index] - accès par index
+                code.push_str("    ; Vector indexing\n");
+                
+                // Évaluer l'expression du vecteur pour obtenir l'adresse de base
+                code.push_str(&self.generate_expr_code(vec_expr)?);
+                code.push_str("    push rax  ; Save vec base address\n");
+                
+                // Évaluer l'index
+                code.push_str(&self.generate_expr_code(index_expr)?);
+                code.push_str("    mov rcx, rax  ; Move index to rcx\n");
+                code.push_str("    pop rax  ; Restore vec base address\n");
+                
+                // Fix vector memory layout issue:
+                // The vector layout in memory is:
+                // [length(4)][element0(4)][element1(4)]...
+                // Each element is 4 bytes after the previous one
+                
+                // First, skip the length field (+4 bytes)
+                // Then add (index * 4) to get to the correct element
+                code.push_str("    mov rdx, rax         ; Copy vec base address\n");
+                code.push_str("    add rdx, 4           ; Skip length field\n");
+                code.push_str("    imul rcx, 4          ; Multiply index by 4 (element size)\n");
+                code.push_str("    add rdx, rcx         ; Add index offset to get element address\n");
+                code.push_str("    mov eax, DWORD [rdx] ; Load element value\n");
+                code.push_str("    movsx rax, eax       ; Sign extend to 64-bit\n");
+            },
+            Expr::MethodCall(obj_expr, method_name, args) => {
+                match method_name.as_str() {
+                    "push" => {
+                        // vec.push(value) - ajouter un élément
+                        code.push_str("    ; Vector push method\n");
+                        
+                        if args.len() != 1 {
+                            self.error_handler.report_error(0, "push() method expects exactly one argument");
+                            return Err(0);
+                        }
+                        
+                        // Évaluer l'objet vecteur pour obtenir son adresse
+                        code.push_str(&self.generate_expr_code(obj_expr)?);
+                        code.push_str("    push rax  ; Save vec address\n");
+                        
+                        // Évaluer la valeur à ajouter
+                        code.push_str(&self.generate_expr_code(&args[0])?);
+                        code.push_str("    mov rcx, rax  ; Save value to push\n");
+                        code.push_str("    pop rax  ; Restore vec address\n");
+                        
+                        // Charger la taille actuelle
+                        code.push_str("    mov edx, DWORD [rax]  ; Load current length\n");
+                        
+                        // Calculer l'adresse où stocker le nouvel élément
+                        // Updated to use consistent layout: base + 4 + (length * 4)
+                        code.push_str("    mov r8d, edx  ; Copy length\n");
+                        code.push_str("    imul r8d, 4  ; length * 4\n");
+                        code.push_str("    lea r9, [rax + 4]  ; vec_base + 4 (skip length field)\n");
+                        code.push_str("    add r9, r8  ; Calculate storage address: base + 4 + (length * 4)\n");
+                        
+                        // Stocker la nouvelle valeur
+                        code.push_str("    mov DWORD [r9], ecx  ; Store new value\n");
+                        
+                        // Incrémenter la taille
+                        code.push_str("    inc edx  ; Increment length\n");
+                        code.push_str("    mov DWORD [rax], edx  ; Store new length\n");
+                        
+                        // Retourner l'adresse du vecteur (pour le chaînage)
+                        code.push_str("    ; push() returns void, rax already contains vec address\n");
+                    },
+                    "len" => {
+                        // vec.len() - obtenir la taille
+                        code.push_str("    ; Vector len method\n");
+                        
+                        if !args.is_empty() {
+                            self.error_handler.report_error(0, "len() method expects no arguments");
+                            return Err(0);
+                        }
+                        
+                        // Évaluer l'objet vecteur pour obtenir son adresse
+                        code.push_str(&self.generate_expr_code(obj_expr)?);
+                        
+                        // Charger la taille (stockée à l'adresse du vecteur)
+                        code.push_str("    mov eax, DWORD [rax]  ; Load vector length\n");
+                        code.push_str("    movsx rax, eax  ; Sign extend to 64-bit\n");
+                    },
+                    _ => {
+                        self.error_handler.report_error(0, &format!("Méthode non supportée: {}", method_name));
+                        return Err(0);
+                    }
+                }
             },
             Expr::Variable(name) => {
                 // Récupérer les informations sur la variable
@@ -556,6 +677,10 @@ impl<'a> CodeGenerator<'a> {
                         Type::I16 => code.push_str(&format!("    movsx rax, WORD [rbp-{}]\n", var_info.offset)),
                         Type::I64 | Type::I128 => code.push_str(&format!("    mov rax, QWORD [rbp-{}]\n", var_info.offset)),
                         Type::String => code.push_str(&format!("    mov rax, QWORD [rbp-{}]\n", var_info.offset)),
+                        Type::Vec(_) => {
+                            // Charger l'adresse du vecteur
+                            code.push_str(&format!("    mov rax, QWORD [rbp-{}]  ; Load vec address {}\n", var_info.offset, name));
+                        },
                         _ => {
                             code.push_str(&format!("    mov eax, DWORD [rbp-{}]  ; Load variable {}\n", var_info.offset, name));
                             code.push_str("    movsx rax, eax  ; Sign extend to 64-bit\n");
@@ -700,29 +825,6 @@ impl<'a> CodeGenerator<'a> {
         }
         
         Ok(code)
-    }
-    
-    // Remove broken methods and fix the remaining ones
-    fn collect_all_strings_in_stmt(&mut self, stmt: &Stmt) {
-        match stmt {
-            Stmt::Let(_, Some(_expr), _, _) => {
-                // Process initializer expression if needed
-            },
-            Stmt::Let(_, None, _, _) => {
-                // No initializer, nothing to process
-            },
-            Stmt::For(_, _range_start, _range_end, body) => {
-                // Process loop body
-                if let Stmt::Block(stmts) = &**body {
-                    for stmt in stmts {
-                        self.collect_all_strings_in_stmt(stmt);
-                    }
-                }
-            },
-            _ => {
-                // Handle other statement types
-            }
-        }
     }
     
     fn process_function_for_format_labels(&mut self, function: &Function) {

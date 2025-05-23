@@ -12,6 +12,8 @@ section .data
     fmt_main_1101 db "i = %d", 10, 0
     fmt_main_12 db "Boucle terminé", 10, 0
     fmt_main_1301 db "j = %d", 10, 0
+    fmt_main_14 db "Testing Vec::new()", 10, 0
+    fmt_main_16 db "j = %d", 10, 0
 
 section .text
     extern printf
@@ -122,7 +124,7 @@ mult:
 main:
     push rbp
     mov rbp, rsp
-    sub rsp, 64
+    sub rsp, 208
 
     ; Variable declaration: x
     mov rax, 10
@@ -442,6 +444,34 @@ L_for_cond_1:
     mov DWORD [rbp-48], eax  ; Store incremented value
     jmp L_for_cond_1  ; Jump back to condition
 L_for_end_1:
+
+    ; println!("Testing Vec::new()", ...)
+
+    ; Configuration des registres pour printf
+    lea rdi, [rel fmt_main_14]  ; Format string
+    xor eax, eax  ; Pas de flottants
+    call printf
+
+    ; Variable declaration: numbers
+    ; Vec::new() - creating empty vector
+    mov DWORD [rbp-124], 0  ; Initialize empty vec length
+    lea rax, [rbp-124]  ; Return empty vec address
+    mov QWORD [rbp-56], rax
+
+    ; println!("j = {}", ...)
+
+    ; Évaluation d'un argument
+    ; Vector len method
+    mov rax, QWORD [rbp-56]  ; Load vec address numbers
+    mov eax, DWORD [rax]  ; Load vector length
+    movsx rax, eax  ; Sign extend to 64-bit
+    push rax  ; Sauvegarde de l'argument sur la pile
+
+    ; Configuration des registres pour printf
+    pop rsi  ; Argument 1
+    lea rdi, [rel fmt_main_16]  ; Format string
+    xor eax, eax  ; Pas de flottants
+    call printf
 
     ; Épilogue de main avec valeur de retour 0
     mov eax, 0
