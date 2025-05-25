@@ -27,7 +27,16 @@ fn main() {
     println!("Testing Vec::new()");
     
     let mut numbers: Vec<i32> = Vec::new();
-    println!("j = {}", numbers.len());  // Fixed: 'number' -> 'numbers'
+    println!("j = {}", numbers.len()); 
+    numbers.push(4920);
+    numbers.push(42);
+    numbers.push(10);
+    println!("taille = {}", numbers.len()); 
+    let n = numbers.len();
+    for i in 0..n{
+        println!("num[i] = {}", numbers[i]);
+    }
+
 }
 
 
