@@ -58,7 +58,6 @@ Notre compilateur prend en charge un sous-ensemble du langage Rust :
 
 ### Structures de contrôle
 - Expressions conditionnelles (`if`/`else`)
-- Boucles `while`
 - Boucles `for` avec plages (ex: `for i in 0..10`)
 
 ### Fonctions
