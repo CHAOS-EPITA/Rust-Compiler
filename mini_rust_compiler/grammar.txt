@@ -1,0 +1,22 @@
+Program      ::= Function* EOF ;
+
+Function     ::= "fn" IDENT "(" ParamList? ")" ReturnType? Block ;
+ParamList    ::= Param ("," Param)* ;
+Param        ::= IDENT ":" Type ;
+
+Stmt         ::= LetStmt | ExprStmt | IfStmt | WhileStmt | ForStmt
+               | ReturnStmt | Block | PrintlnStmt ;
+
+Expr         ::= Assignment ;
+Assignment   ::= Equality ("=" Assignment)? ;
+Equality     ::= Comparison (("==" | "!=") Comparison)* ;
+Comparison   ::= Term (("<" | "<=" | ">" | ">=") Term)* ;
+Term         ::= Factor (("+" | "-") Factor)* ;
+Factor       ::= Unary (("*" | "/" | "%") Unary)* ;
+Unary        ::= "-" Unary | Call ;
+Call         ::= Primary ( "(" ArgList? ")" | "[" Expr "]"
+               | "." IDENT "(" ArgList? ")" )* ;
+Primary      ::= INT | STRING | "[" ArgList? "]" | "Vec" "::" "new" "()"
+               | IDENT | "(" Expr ")" ;
+
+Type         ::= "i32" | "f64" | "String" | "Vec" "<" Type ">" | … ;
