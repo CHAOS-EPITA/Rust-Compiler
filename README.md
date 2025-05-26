@@ -14,7 +14,6 @@ Ce projet est un compilateur Rust écrit en Rust, développé par l'équipe CHAO
 Prérequis :
 - Rust et Cargo (installés via [rustup](https://rustup.rs/))
 - NASM (assembleur)
-- GCC (pour l'édition de liens)
 
 Pour installer le compilateur :
 
