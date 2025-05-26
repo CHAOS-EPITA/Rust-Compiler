@@ -113,8 +113,4 @@ fn main() {
 
 ## Limitations
 
-Ce compilateur est un projet éducatif et ne prend en charge qu'un sous-ensemble du langage Rust. Il n'est pas destiné à une utilisation en production.
-
-## Licence
-
-[MIT](LICENSE)
+Ce compilateur est un projet éducatif et ne prend en charge qu'un sous-ensemble du langage Rust.
